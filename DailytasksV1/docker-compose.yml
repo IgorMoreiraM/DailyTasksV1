@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  # Serviço do Banco de Dados PostgreSQL
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: dailytasks-db
+    ports:
+      - "5433:5432" # Expõe a porta 5432 do contêiner para a porta 5432 da sua máquina
+    environment:
+      - POSTGRES_USER=admin       # Usuário que será criado
+      - POSTGRES_PASSWORD=admin   # Senha para este usuário
+      - POSTGRES_DB=dailytasks  # Nome do banco de dados que será criado
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Volume para persistir os dados
+
+  # (Opcional, mas recomendado) Ferramenta de Admin
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: dailytasks-pgadmin
+    ports:
+      - "8081:80" # Acessível em http://localhost:8081
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    depends_on:
+      - postgres-db
+
+volumes:
+  postgres_data:

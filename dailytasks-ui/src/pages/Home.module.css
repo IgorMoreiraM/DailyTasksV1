@@ -1,0 +1,173 @@
+/* --- CORREÇÕES (Tag -> Classe) --- */
+
+.header {
+  background: var(--header-bg);
+  color: var(--primary-text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+}
+.header nav a,
+.toggleThemeBtn {
+  margin-left: 20px;
+  text-decoration: none;
+  color: var(--primary-text);
+  font-weight: bold;
+}
+.toggleThemeBtn {
+  background-color: var(--accent-color);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.toggleThemeBtn:hover {
+  background-color: #6a5acd;
+}
+/* Estilo para o botão de logout (baseado no toggle-button do login) */
+.logoutButton {
+  font-family: "Franklin Gothic Medium", "Arial Narrow", Arial, sans-serif;
+  background: var(--accent-color);
+  color: white;
+  padding: 10px;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background 0.3s ease;
+  border: none;
+  font-size: 14px;
+  font-weight: bold;
+}
+.logoutButton:hover {
+  background: #6a5acd;
+}
+
+
+/* --- Resto dos Estilos --- */
+.profileBanner {
+  background: #9f81e4;
+  padding: 40px 20px;
+}
+.profileInfo {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.profileImage {
+  width: 100px;
+  height: 100px;
+  background-color: #cccccc;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+}
+.profileDetails h2 {
+  margin: 0;
+}
+.role {
+  background-color: var(--accent-color);
+  color: white;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 14px;
+  margin: 10px 0;
+  display: inline-block; /* Garante que o span respeita o padding */
+}
+.profileActions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.welcome {
+  background: #87cefa;
+  color: white;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+/* --- CORREÇÕES (Tag -> Classe) --- */
+.main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+}
+.footer {
+  background: var(--header-bg);
+  text-align: center;
+  padding: 20px;
+}
+.footer a {
+  color: var(--accent-color);
+  margin: 0 10px;
+  text-decoration: none;
+}
+
+/* --- Secções (Já eram classes) --- */
+.teamSection,
+.featuredTasks,
+.recentLists {
+  width: 100%;
+  max-width: 800px;
+  background: var(--card-bg);
+  padding: 20px;
+  margin: 20px 0;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* --- CORREÇÕES (Tag -> Classe) --- */
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.input,
+.select {
+  flex: 1 1 40%;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+.button {
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+.button:hover {
+  background-color: #6a5acd;
+}
+
+/* --- Cartões (Já eram classes) --- */
+.taskCard,
+.listCard,
+.employeeCard {
+  background: #f9f9f9;
+  padding: 15px;    
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+/* Estilo para o <select> (dropdowns) */
+.select {
+  flex: 1 1 40%;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-family: "Franklin Gothic Medium", "Arial Narrow", Arial, sans-serif;
+}
+
+
+.select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 8px rgba(75, 0, 130, 0.5);
+}
