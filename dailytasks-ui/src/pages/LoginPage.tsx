@@ -2,10 +2,8 @@ import { useState, FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
-import logo from '/img/Logo.png'; 
-import styles from './LoginPage.module.css'; 
 
-export const LoginPage = () => { 
+export const LoginPage = () => {
   const { isAuthenticated, isAdmin, login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -15,14 +13,10 @@ export const LoginPage = () => {
     event.preventDefault();
     setError('');
     try {
-      const response = await api.post('/login', { 
-        username: username, 
-        password: password 
-      });
-      login(response.data.token); 
+      const response = await api.post('/login', { username, password });
+      login(response.data.token);
     } catch (err: any) {
-      console.error('Falha no login:', err);
-      setError('Usuário ou senha inválidos.');
+      setError('Usuário ou senha incorretos.');
     }
   };
 
@@ -31,53 +25,40 @@ export const LoginPage = () => {
   }
 
   return (
-    <div className={styles.loginPageWrapper}> 
-      <div className={styles.container}>
-        <div className={`${styles.panel} ${styles.loginSection}`}>
-          
-          {/* Usa a classe .logo */}
-          <img src={logo} alt="Daily Tasks" className={styles.logo} />
-          
-          <h2>Bem vindo ao Daily Tasks</h2>
-          <p>Gerencie suas tarefas</p>
+    <div className="fixed inset-0 bg-[#fdfbf7] flex items-center justify-center z-[100]">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-100 flex flex-col items-center fade-in">
+        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mb-6 text-3xl">
+          📝
+        </div>
+        <h2 className="text-2xl font-bold text-slate-800">Daily Tasks</h2>
+        <p className="text-slate-500 mb-8 text-center">Faça login para gerenciar suas tarefas e equipe.</p>
 
-          <form id="loginForm" onSubmit={handleSubmit}>
-            <label htmlFor="email">Usuário/E-mail</label>
-            {/* Usa a classe .input */}
+        <form onSubmit={handleSubmit} className="w-full flex flex-col gap-5">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-semibold text-slate-700">Usuário</label>
             <input
-              type="text" 
-              id="email" 
-              placeholder="Entre com seu usuário ou e-mail"
+              type="text"
+              placeholder="ex: admin"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              className={styles.input} 
             />
-
-            <label htmlFor="password">Senha</label>
-            {/* Usa a classe .input */}
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-semibold text-slate-700">Senha</label>
             <input
               type="password"
-              id="password" 
-              placeholder="Entre com sua senha"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className={styles.input} 
             />
-
-            {/* Usa a classe .button */}
-            <button type="submit" className={styles.button}>Entrar</button>
-            {error && <p className={styles.errorMessage}>{error}</p>} 
-          </form>
-        </div>
-
-        <div className={`${styles.panel} ${styles.welcomeSection}`}>
-          <h2>O Daily Tasks te ajuda!</h2>
-          <p>Faça login para começar.</p>
-          {/* O seu protótipo tinha um botão de registo aqui, 
-              que usa .toggleButton, mas nós o removemos. */}
-        </div>
+          </div>
+          <button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-lg transition-all mt-2 shadow-lg shadow-amber-600/20">
+            Entrar no Sistema
+          </button>
+          {error && <p className="text-red-500 text-sm text-center mt-2">{error}</p>}
+        </form>
       </div>
     </div>
   );

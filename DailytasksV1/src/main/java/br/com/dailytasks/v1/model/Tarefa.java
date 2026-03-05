@@ -3,9 +3,14 @@ package br.com.dailytasks.v1.model;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
-import org.hibernate.annotations.OnDelete;
-import org.hibernate.annotations.OnDeleteAction;
 
+/**
+ * Entidade que representa a unidade de trabalho (Tarefa).
+ * Implementa a regra de negócio de vinculação obrigatória a um Projeto
+ * e opcional a uma Lista de Tarefas.
+ * * @author Equipe Daily Tasks
+ * @version 2.1
+ */
 @Entity(name = "Tarefa")
 @Table(name = "tarefas")
 @Getter
@@ -22,26 +27,44 @@ public class Tarefa {
     @Column(nullable = false)
     private String titulo;
 
-    @Column(columnDefinition = "TEXT") // Substitua @Lob por isto
+    @Column(columnDefinition = "TEXT")
     private String descricao;
 
-    @Enumerated(EnumType.STRING) // Salva o nome do Enum (ex: "PENDENTE")
-    @Column(nullable = false)
-    private TaskStatus status;
-
+    /**
+     * Data limite para a conclusão da tarefa.
+     * Este campo é essencial para o controle de prazos no Dashboard.
+     */
+    @Column(name = "data_de_vencimento")
     private LocalDate dataDeVencimento;
 
-    // Relacionamento: Muitas Tarefas para UMA Lista
-    // 'FetchType.LAZY' significa que só carrega a lista quando o método .getListaDeTarefas() for chamado.
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "lista_id", nullable = false) // Chave estrangeira
-    @ToString.Exclude // Evita recursão infinita
-    private ListaDeTarefas listaDeTarefas;
+    /**
+     * Status atual da tarefa (PENDENTE, EM_ANDAMENTO, CONCLUIDA, etc).
+     * Mapeado como String para garantir legibilidade no banco de dados.
+     */
+    @Enumerated(EnumType.STRING)
+    private TaskStatus status;
 
-    // Relacionamento: Muitas Tarefas para UM Funcionário (o "atribuído")
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "funcionario_id", nullable = true) // Chave estrangeira
-    @ToString.Exclude // Evita recursão infinita
-    @OnDelete(action = OnDeleteAction.SET_NULL)
+    /**
+     * Projeto ao qual esta tarefa pertence.
+     * Vínculo obrigatório (optional = false).
+     */
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "projeto_id")
+    private Projeto projeto;
+
+    /**
+     * Lista de tarefas específica dentro de um projeto.
+     * Vínculo opcional, permitindo que tarefas existam fora de listas.
+     */
+    @ManyToOne
+    @JoinColumn(name = "lista_id")
+    private ListaTarefa listaTarefa;
+
+    /**
+     * Funcionário responsável pela execução da tarefa.
+     * Utilizado para filtrar as "Minhas Tarefas" no Dashboard do funcionário.
+     */
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "funcionario_id")
     private Funcionario funcionarioAtribuido;
 }

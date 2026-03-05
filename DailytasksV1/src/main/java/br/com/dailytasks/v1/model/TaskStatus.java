@@ -4,5 +4,6 @@ public enum TaskStatus {
     PENDENTE,
     EM_ANDAMENTO,
     CONCLUIDA,
-    BLOQUEADA
+    BLOQUEADA,
+    CANCELADA; // Adicione aqui
 }

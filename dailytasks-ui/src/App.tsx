@@ -1,12 +1,14 @@
 import { Routes, Route, Navigate, To } from 'react-router-dom';
-import { useAuth } from './contexts/AuthContext'; 
+import { useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { AdminPage } from './pages/AdminPage';
 import { CreatePage } from './pages/CreatePage';
-import './App.css'; 
+import './App.css';
 
-// --- Componente ProtectedRoute (fica igual) ---
+/**
+ * Componente para proteger rotas baseadas em autenticação e permissões (Roles).
+ */
 interface ProtectedRouteProps {
   isAllowed: boolean;
   redirectTo?: To;
@@ -20,35 +22,27 @@ const ProtectedRoute = ({ isAllowed, redirectTo = "/login", children }: Protecte
   return children;
 };
 
-// --- Componente App (Modificado) ---
 function App() {
-  // 1. Obtemos o 'isLoading' do nosso hook
-  const { isAuthenticated, isAdmin, isLoading } = useAuth(); 
+  const { isAuthenticated, isAdmin } = useAuth();
 
-  // 2. Se estiver a carregar (a verificar o token inicial), não renderiza rotas
-  if (isLoading) {
-    return null; // Ou um <Spinner /> global
-  }
-
-  // 3. O 'isAuthenticated' e 'isAdmin' agora são 100% fiáveis
   return (
     <Routes>
-      <Route 
-        path="/login" 
-        element={<LoginPage />} 
-      />
+      {/* --- ROTA PÚBLICA --- */}
+      <Route path="/login" element={<LoginPage />} />
 
-      {/* Rota de Funcionário (Mais Específica) */}
+      {/* --- ROTA DO FUNCIONÁRIO --- */}
+      {/* Acessível por qualquer usuário logado */}
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute isAllowed={isAuthenticated && !isAdmin}>
+          <ProtectedRoute isAllowed={isAuthenticated}>
             <DashboardPage />
           </ProtectedRoute>
         }
       />
-      
-      {/* Rota de Admin */}
+
+      {/* --- ROTAS DO ADMINISTRADOR --- */}
+      {/* Acessíveis apenas se estiver logado E for ADMIN */}
       <Route
         path="/admin"
         element={
@@ -57,8 +51,7 @@ function App() {
           </ProtectedRoute>
         }
       />
-      
-      {/* Rota de Criar (Admin) */}
+
       <Route
         path="/criar"
         element={
@@ -67,14 +60,18 @@ function App() {
           </ProtectedRoute>
         }
       />
-      
-      {/* Rota Padrão: Redireciona para o local correto */}
+
+      {/* --- REDIRECIONAMENTO PADRÃO --- */}
+      {/* Se o usuário tentar acessar uma rota inexistente ou a raiz (/) */}
       <Route
         path="*"
         element={
           isAuthenticated ? (
-            // Agora o 'isAdmin' está correto no momento do redirecionamento
-            <Navigate to={isAdmin ? "/admin" : "/dashboard"} replace />
+            isAdmin ? (
+              <Navigate to="/admin" replace />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
           ) : (
             <Navigate to="/login" replace />
           )

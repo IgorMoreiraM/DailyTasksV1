@@ -1,26 +1,31 @@
 package br.com.dailytasks.v1.dto;
 
-import br.com.dailytasks.v1.model.ListaDeTarefas;
+import br.com.dailytasks.v1.model.ListaTarefa;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
-// DTO para GET /listas-tarefas/{id} (mostra as tarefas)
+/**
+ * Data Transfer Object (DTO) para detalhamento de uma Lista de Tarefas.
+ * Atualizado para refletir a nova hierarquia, onde a lista pertence a um Projeto.
+ * * @author Equipe Daily Tasks
+ * @version 1.1
+ */
 public record ListaDeTarefasDetailResponseDTO(
         Long id,
         String nome,
-        Long equipeId,
-        List<TarefaResponseDTO> tarefas // Lista de tarefas
+        Long projetoId,
+        String nomeProjeto
 ) {
-    public ListaDeTarefasDetailResponseDTO(ListaDeTarefas lista) {
+    /**
+     * Construtor auxiliar para conversão da Entidade para DTO.
+     * Substitui a antiga referência a 'getEquipe()' por 'getProjeto()'.
+     * * @param lista Objeto de entidade vindo do banco de dados.
+     */
+    public ListaDeTarefasDetailResponseDTO(ListaTarefa lista) {
         this(
                 lista.getId(),
                 lista.getNome(),
-                lista.getEquipe().getId(),
-                // Converte a List<Tarefa> para List<TarefaResponseDTO>
-                lista.getTarefas().stream()
-                        .map(TarefaResponseDTO::new)
-                        .collect(Collectors.toList())
+                // Mapeamento corrigido: Agora buscamos dados do Projeto pai
+                lista.getProjeto().getId(),
+                lista.getProjeto().getNome()
         );
     }
 }

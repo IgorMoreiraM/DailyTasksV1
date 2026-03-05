@@ -14,23 +14,31 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * Controller responsável pela gestão de colaboradores (Funcionários).
+ * Fornece endpoints para criação, listagem, atualização e exclusão.
+ * * @author Equipe Daily Tasks
+ * @version 1.0
+ */
 @RestController
-@RequestMapping("/funcionarios") // Todos endpoints aqui começam com /funcionarios
+@RequestMapping("/funcionarios")
 public class FuncionarioController {
 
     @Autowired
     private FuncionarioRepository repository;
 
     @Autowired
-    private PasswordEncoder passwordEncoder; // Injetamos o BCrypt
+    private PasswordEncoder passwordEncoder;
 
-    // Endpoint 1: Criar um novo funcionário (POST)
-    // Rota: POST http://localhost:8080/funcionarios
-    // Esta rota já está protegida para ADMINS no SecurityConfigurations
+    /**
+     * Registra um novo funcionário no sistema.
+     * Criptografa a senha utilizando BCrypt antes da persistência.
+     * * @param data DTO contendo username, password, nomeCompleto e role.
+     * @return ResponseEntity com o DTO do funcionário criado e status 201.
+     */
     @PostMapping
     public ResponseEntity<FuncionarioResponseDTO> criarFuncionario(@RequestBody FuncionarioCreateDTO data) {
-
-        // Regra de negócio: Criptografar a senha antes de salvar
+        // Criptografia da senha por segurança
         String senhaCriptografada = passwordEncoder.encode(data.password());
 
         Funcionario novoFuncionario = new Funcionario();
@@ -41,72 +49,66 @@ public class FuncionarioController {
 
         Funcionario funcionarioSalvo = repository.save(novoFuncionario);
 
-        // Retorna um DTO de resposta, NUNCA a entidade com a senha
+        // Retorno seguro (sem expor a senha no JSON)
         return ResponseEntity.status(201).body(new FuncionarioResponseDTO(funcionarioSalvo));
     }
 
-    // Endpoint 2: Listar todos os funcionários (GET)
-    // Rota: GET http://localhost:8080/funcionarios
-    // (Esta rota está protegida por padrão - "anyRequest().authenticated()")
+    /**
+     * Lista todos os funcionários cadastrados.
+     * * @return Lista de DTOs representativos dos funcionários.
+     */
     @GetMapping
     public ResponseEntity<List<FuncionarioResponseDTO>> listarFuncionarios() {
         List<Funcionario> funcionarios = repository.findAll();
 
-        // Converte a lista de Entidades para uma lista de DTOs
         List<FuncionarioResponseDTO> funcionariosDTO = funcionarios.stream()
-                .map(FuncionarioResponseDTO::new) // (funcionario -> new FuncionarioResponseDTO(funcionario))
+                .map(FuncionarioResponseDTO::new)
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(funcionariosDTO);
     }
 
+    /**
+     * Atualiza os dados de um funcionário existente (Nome ou Cargo).
+     * * @param id Identificador único do funcionário.
+     * @param data DTO com os campos opcionais para atualização.
+     * @return FuncionarioResponseDTO atualizado ou 404 caso não encontrado.
+     */
     @PutMapping("/{id}")
     public ResponseEntity<?> atualizarFuncionario(
             @PathVariable Long id,
             @RequestBody FuncionarioUpdateDTO data) {
 
-        // 1. Busca o funcionário no banco
-        Optional<Funcionario> funcionarioOpt = repository.findById(id);
-        if (funcionarioOpt.isEmpty()) {
-            return ResponseEntity.status(404).body("Funcionário com ID " + id + " não encontrado.");
-        }
+        return repository.findById(id)
+                .map(funcionario -> {
+                    // Atualização condicional: apenas campos enviados no JSON
+                    if (data.nomeCompleto() != null) funcionario.setNomeCompleto(data.nomeCompleto());
+                    if (data.role() != null) funcionario.setRole(data.role());
 
-        Funcionario funcionario = funcionarioOpt.get();
-
-        // 2. Atualiza os dados (sem mexer na senha)
-        if (data.nomeCompleto() != null) {
-            funcionario.setNomeCompleto(data.nomeCompleto());
-        }
-        if (data.role() != null) {
-            funcionario.setRole(data.role());
-        }
-
-        // 3. Salva o funcionário atualizado
-        Funcionario funcionarioSalvo = repository.save(funcionario);
-
-        // 4. Retorna o DTO de resposta
-        return ResponseEntity.ok(new FuncionarioResponseDTO(funcionarioSalvo));
+                    Funcionario atualizado = repository.save(funcionario);
+                    return ResponseEntity.ok(new FuncionarioResponseDTO(atualizado));
+                })
+                .orElse(ResponseEntity.status(404).build());
     }
 
     /**
-     * Endpoint 4: Deletar um funcionário (DELETE)
-     * Rota: DELETE http://localhost:8080/funcionarios/{id}
-     * Protegido: Apenas ADMIN
+     * Remove um funcionário do banco de dados.
+     * Nota: Operações de exclusão podem falhar se houver tarefas vinculadas (Integridade Referencial).
+     * * @param id Identificador único do funcionário.
+     * @return Status 204 (No Content) em caso de sucesso ou 404 se não existir.
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deletarFuncionario(@PathVariable Long id) {
-
-        // 1. Verifica se o funcionário existe antes de deletar
         if (!repository.existsById(id)) {
             return ResponseEntity.status(404).body("Funcionário com ID " + id + " não encontrado.");
         }
 
-        // 2. Deleta o funcionário
-        // CUIDADO: Se o funcionário for dono de tarefas, isso pode quebrar
-        // (Vamos tratar disso na Fase 22, ao atualizar Tarefa)
-        repository.deleteById(id);
-
-        // 3. Retorna 204 No Content (sucesso, sem corpo)
-        return ResponseEntity.noContent().build();
+        try {
+            repository.deleteById(id);
+            return ResponseEntity.noContent().build();
+        } catch (Exception e) {
+            // Caso existam tarefas vinculadas sem DELETE CASCADE no banco
+            return ResponseEntity.status(409).body("Erro: O funcionário possui tarefas vinculadas e não pode ser excluído.");
+        }
     }
 }
