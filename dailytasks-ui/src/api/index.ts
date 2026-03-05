@@ -8,7 +8,7 @@ const api = axios.create({
   baseURL: API_URL,
 });
 
-// 3. Interceptor de Requisição (MÁGICA ACONTECENDO AQUI)
+// 3. Interceptor de Requisição
 // Isso é executado ANTES de CADA requisição que fizermos
 api.interceptors.request.use(
   (config) => {
