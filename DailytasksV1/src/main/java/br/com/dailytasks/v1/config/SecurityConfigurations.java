@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -17,11 +18,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Classe de configuração de segurança do Spring Security.
- * Define as políticas de autenticação, autorização e filtros de requisição para o ecossistema Daily Tasks.
- * Implementa a hierarquia: Projetos > Listas > Tarefas.
- * * @author Equipe Daily Tasks
- * @version 1.2
+ * Configuração de segurança central do Daily Tasks.
+ * Gerencia a hierarquia de acesso e integra a política de CORS.
  */
 @Configuration
 @EnableWebSecurity
@@ -30,79 +28,55 @@ public class SecurityConfigurations {
     @Autowired
     private SecurityFilter securityFilter;
 
-    /**
-     * Configura a corrente de filtros de segurança (Security Filter Chain).
-     * Define quem pode criar Projetos, gerenciar Listas e operar Tarefas.
-     * * @param http Objeto HttpSecurity para configurar a segurança web.
-     * @return SecurityFilterChain configurado.
-     * @throws Exception Caso ocorra erro na configuração.
-     */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-                .csrf(AbstractHttpConfigurer::disable) // Desabilita CSRF para APIs REST Stateless
+                // 1. ATIVA O CORS: Crucial para o Frontend (5173) falar com o Backend (8080)
+                .cors(Customizer.withDefaults())
+
+                .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
 
-                        // --- 0. Pre-flight Requests ---
-                        // Essencial para permitir que o navegador (CORS) valide a requisição antes do envio real
+                        // --- 0. Pre-flight e Públicos ---
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
-                        // --- 1. Rotas Públicas ---
                         .requestMatchers(HttpMethod.POST, "/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/health-check").permitAll()
 
-                        // --- 2. Regras de ADMINISTRADOR (Controle Total) ---
+                        // --- 1. Gestão de Pessoas (/funcionarios) ---
+                        // CORREÇÃO: Liberado para MASTER (Igor) e GESTOR (Clientes)
+                        .requestMatchers("/funcionarios/**").hasAnyRole("MASTER", "GESTOR")
 
-                        // Gestão de Funcionários
-                        .requestMatchers(HttpMethod.POST, "/funcionarios").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/funcionarios/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/funcionarios/**").hasRole("ADMIN")
+                        // --- 2. Gestão de Projetos e Estrutura ---
+                        // Apenas Master e Gestor podem criar/deletar projetos e colunas (listas)
+                        .requestMatchers("/projetos/**").hasAnyRole("MASTER", "GESTOR")
+                        .requestMatchers("/listas/**").hasAnyRole("MASTER", "GESTOR")
 
-                        // Gestão de Projetos (Novo pilar do sistema)
-                        .requestMatchers(HttpMethod.POST, "/projetos").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/projetos/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/projetos/**").hasRole("ADMIN")
+                        // --- 3. Operação de Tarefas ---
+                        // Gerentes criam tarefas. Funcionários apenas as executam.
+                        .requestMatchers(HttpMethod.POST, "/tarefas").hasAnyRole("MASTER", "GESTOR", "GERENTE")
+                        .requestMatchers(HttpMethod.DELETE, "/tarefas/**").hasAnyRole("MASTER", "GESTOR", "GERENTE")
 
-                        // Gestão de Listas (Vinculadas a Projetos)
-                        .requestMatchers(HttpMethod.POST, "/listas").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/listas/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/listas/**").hasRole("ADMIN")
+                        // --- 4. Acesso Geral ---
+                        // Qualquer usuário logado pode ver seus dados e atualizar status de tarefas
+                        .requestMatchers(HttpMethod.GET, "/**").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/tarefas/**").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/tarefas/**").authenticated()
 
-                        // Gestão de Tarefas (Criação e Deleção)
-                        .requestMatchers(HttpMethod.POST, "/tarefas").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/tarefas/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/tarefas/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/tarefas").hasRole("ADMIN")
-
-                        // --- 3. Regras Compartilhadas (ADMIN e FUNCIONARIO) ---
-                        // Rotas de visualização e atualização de progresso
-                        .requestMatchers(HttpMethod.GET, "/projetos/**").hasAnyRole("ADMIN", "FUNCIONARIO")
-                        .requestMatchers(HttpMethod.GET, "/listas/**").hasAnyRole("ADMIN", "FUNCIONARIO")
-                        .requestMatchers(HttpMethod.GET, "/funcionarios").hasAnyRole("ADMIN", "FUNCIONARIO")
-                        .requestMatchers(HttpMethod.GET, "/tarefas/minhas-tarefas").hasAnyRole("ADMIN", "FUNCIONARIO")
-                        .requestMatchers(HttpMethod.GET, "/tarefas/**").hasAnyRole("ADMIN", "FUNCIONARIO")
-                        .requestMatchers(HttpMethod.PATCH, "/tarefas/**").hasAnyRole("ADMIN", "FUNCIONARIO")
-
-                        // --- 4. Bloqueio Geral ---
                         .anyRequest().authenticated()
                 )
-                // Injeção do filtro de autenticação JWT customizado
+                // Adiciona o filtro de JWT antes do filtro padrão do Spring
                 .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
 
-    /**
-     * Gerencia a autenticação baseada nas configurações de AuthenticationConfiguration.
-     */
+
+
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
         return configuration.getAuthenticationManager();
     }
 
-    /**
-     * Define o BCrypt como algoritmo de criptografia para senhas.
-     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();

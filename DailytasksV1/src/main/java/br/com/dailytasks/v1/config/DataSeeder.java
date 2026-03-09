@@ -7,44 +7,37 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import java.util.Optional;
 
 @Component
-public class DataSeeder implements CommandLineRunner { // Interface que executa na inicialização
+public class DataSeeder implements CommandLineRunner {
 
     @Autowired
     private FuncionarioRepository funcionarioRepository;
 
     @Autowired
-    private PasswordEncoder passwordEncoder; // Injetamos o BCRYPT que já configuramos
+    private PasswordEncoder passwordEncoder;
 
     @Override
     public void run(String... args) throws Exception {
+        System.out.println(">>> SEEDER: Verificando usuário mestre...");
 
-        // 1. Verifica se já existe um usuário "admin"
-        if (funcionarioRepository.findByUsername("admin") == null) {
+        // Linha 34: Agora o tipo Optional<Funcionario> é compatível com o Repository
+        Optional<Funcionario> adminExistente = funcionarioRepository.findByUsername("admin");
 
-            System.out.println(">>> SEEDER: Criando usuário ADMIN padrão...");
+        if (adminExistente.isEmpty()) {
+            System.out.println(">>> SEEDER: Criando usuário MASTER padrão...");
 
-            // 2. Define a senha (plana)
-            String senhaPlana = "admin123"; // Vamos usar "admin" / "admin123" para logar
-
-            // 3. Criptografa a senha
-            String senhaCriptografada = passwordEncoder.encode(senhaPlana);
-
-            // 4. Cria o novo funcionário (ADMIN)
             Funcionario admin = new Funcionario();
             admin.setUsername("admin");
-            admin.setNomeCompleto("Administrador do Sistema");
-            admin.setPassword(senhaCriptografada); // Salva a senha criptografada
-            admin.setRole(UserRole.ADMIN);
+            admin.setNomeCompleto("Administrador Master");
+            admin.setPassword(passwordEncoder.encode("admin123"));
+            admin.setRole(UserRole.MASTER); // Hierarquia nova
 
-            // 5. Salva no banco
             funcionarioRepository.save(admin);
-
-            System.out.println(">>> SEEDER: Usuário ADMIN criado com sucesso.");
-
+            System.out.println(">>> SEEDER: Usuário MASTER criado com sucesso.");
         } else {
-            System.out.println(">>> SEEDER: Usuário ADMIN já existe. Nenhum dado foi inserido.");
+            System.out.println(">>> SEEDER: Usuário MASTER já existe.");
         }
     }
 }

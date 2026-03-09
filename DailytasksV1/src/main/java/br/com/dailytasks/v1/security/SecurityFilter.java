@@ -8,60 +8,50 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-@Component // Marca este filtro como um componente gerenciado pelo Spring
-public class SecurityFilter extends OncePerRequestFilter { // Garante que é executado 1 vez por req
+/**
+ * Filtro de Segurança JWT.
+ * Extrai o usuário do token e o autentica no contexto do Spring Security.
+ */
+@Component
+public class SecurityFilter extends OncePerRequestFilter {
 
     @Autowired
     private TokenService tokenService;
 
     @Autowired
-    private FuncionarioRepository funcionarioRepository;
+    private FuncionarioRepository repository;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-            throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        var tokenJWT = recuperarToken(request);
 
-        // 1. Tenta recuperar o token do cabeçalho da requisição
-        var token = this.recoverToken(request);
+        if (tokenJWT != null) {
+            var subject = tokenService.validateToken(tokenJWT);
 
-        // 2. Se um token foi encontrado
-        if (token != null) {
-            // 3. Valida o token usando nosso TokenService
-            // 3. Valida o token usando nosso TokenService
-            var subject = tokenService.validateToken(token);
+            // CORREÇÃO: O repositório retorna Optional, então usamos .orElse(null)
+            // para pegar o Funcionario ou nulo se não encontrar.
+            var funcionario = repository.findByUsername(subject).orElse(null);
 
-            // 4. Se o token for válido (subject não está vazio)
-            if (!subject.isEmpty()) {
-                // 5. Busca o usuário (Funcionario) no banco de dados
-                UserDetails user = funcionarioRepository.findByUsername(subject);
-
-                // 6. Cria um objeto de autenticação para o Spring Security
-                var authentication = new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-
-                // 7. Salva a autenticação no contexto de segurança.
-                // O Spring agora sabe que este usuário está autenticado para esta requisição.
+            if (funcionario != null) {
+                // Agora o Java reconhece o getAuthorities() porque 'funcionario' é o objeto real
+                var authentication = new UsernamePasswordAuthenticationToken(funcionario, null, funcionario.getAuthorities());
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         }
 
-        // 8. Independentemente de ter token ou não, continua a cadeia de filtros.
-        // Se não houver autenticação, o Spring Security barrará o acesso (como configuramos)
         filterChain.doFilter(request, response);
     }
 
-    // Método auxiliar para extrair o token do Header "Authorization"
-    private String recoverToken(HttpServletRequest request) {
-        var authHeader = request.getHeader("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return null; // Não há token ou está mal formatado
+    private String recuperarToken(HttpServletRequest request) {
+        var authorizationHeader = request.getHeader("Authorization");
+        if (authorizationHeader != null) {
+            return authorizationHeader.replace("Bearer ", "");
         }
-        // Remove o prefixo "Bearer " para obter apenas o token
-        return authHeader.replace("Bearer ", "");
+        return null;
     }
 }

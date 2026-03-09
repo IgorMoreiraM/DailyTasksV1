@@ -17,10 +17,10 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Entidade que representa um Colaborador (Funcionário) no sistema.
- * Implementa {@link UserDetails} para integração nativa com o Spring Security.
+ * Entidade que representa um Colaborador no sistema Daily Tasks.
+ * Suporta hierarquia MASTER, GESTOR e GERENTE e controle de primeiro acesso.
  * * @author Equipe Daily Tasks
- * @version 1.1
+ * @version 3.0
  */
 @Entity(name = "Funcionario")
 @Table(name = "funcionarios")
@@ -45,16 +45,21 @@ public class Funcionario implements UserDetails {
     private String password;
 
     /**
-     * Define o perfil de acesso do usuário.
-     * Mapeado como STRING no banco de dados para facilitar a leitura via SQL.
+     * Define se o usuário ainda utiliza a senha gerada pelo Gestor.
+     * Se true, o Frontend deve obrigar a troca no primeiro acesso.
+     */
+    @Column(nullable = false)
+    private boolean senhaTemporaria = true;
+
+    /**
+     * Define o nível de acesso global do usuário.
      */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserRole role;
 
     /**
-     * Relacionamento Muitos-para-Muitos com as Equipes.
-     * Utiliza EAGER para carregar as equipes junto com o funcionário durante a autenticação.
+     * Relacionamento com as Equipes.
      */
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
@@ -66,70 +71,55 @@ public class Funcionario implements UserDetails {
     private Set<Equipe> equipes = new HashSet<>();
 
     /**
-     * Converte o atributo 'role' em uma coleção de {@link GrantedAuthority}.
-     * O Spring Security utiliza este método para decidir se o usuário pode acessar
-     * rotas protegidas por .hasRole() ou .hasAuthority().
-     * * @return Coleção de autoridades (permissões) do usuário.
+     * Mapeia o UserRole para as permissões do Spring Security.
+     * A hierarquia garante que um MASTER tenha todos os privilégios dos cargos inferiores.
      */
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // Se a role for ADMIN, concedemos o acesso de ADMIN e o de FUNCIONARIO (hierarquia)
-        if (this.role == UserRole.ADMIN) {
+        if (this.role == UserRole.MASTER) {
             return List.of(
-                    new SimpleGrantedAuthority("ROLE_ADMIN"),
+                    new SimpleGrantedAuthority("ROLE_MASTER"),
+                    new SimpleGrantedAuthority("ROLE_GESTOR"),
+                    new SimpleGrantedAuthority("ROLE_GERENTE"),
                     new SimpleGrantedAuthority("ROLE_FUNCIONARIO")
             );
         }
 
-        // Caso contrário, apenas a permissão padrão de funcionário
+        if (this.role == UserRole.GESTOR) {
+            return List.of(
+                    new SimpleGrantedAuthority("ROLE_GESTOR"),
+                    new SimpleGrantedAuthority("ROLE_GERENTE"),
+                    new SimpleGrantedAuthority("ROLE_FUNCIONARIO")
+            );
+        }
+
+        if (this.role == UserRole.GERENTE) {
+            return List.of(
+                    new SimpleGrantedAuthority("ROLE_GERENTE"),
+                    new SimpleGrantedAuthority("ROLE_FUNCIONARIO")
+            );
+        }
+
         return List.of(new SimpleGrantedAuthority("ROLE_FUNCIONARIO"));
     }
 
-    /* --- Métodos de Implementação UserDetails --- */
+    /* --- Implementação UserDetails (Padrão) --- */
 
     @Override
-    public String getPassword() {
-        return this.password;
-    }
+    public String getPassword() { return this.password; }
 
     @Override
-    public String getUsername() {
-        return this.username;
-    }
+    public String getUsername() { return this.username; }
 
-    /**
-     * Indica se a conta do usuário expirou.
-     * @return true (conta sempre ativa).
-     */
     @Override
-    public boolean isAccountNonExpired() {
-        return true;
-    }
+    public boolean isAccountNonExpired() { return true; }
 
-    /**
-     * Indica se o usuário está bloqueado ou desbloqueado.
-     * @return true (nunca bloqueado via sistema).
-     */
     @Override
-    public boolean isAccountNonLocked() {
-        return true;
-    }
+    public boolean isAccountNonLocked() { return true; }
 
-    /**
-     * Indica se as credenciais (senha) expiraram.
-     * @return true (não expira).
-     */
     @Override
-    public boolean isCredentialsNonExpired() {
-        return true;
-    }
+    public boolean isCredentialsNonExpired() { return true; }
 
-    /**
-     * Indica se o usuário está habilitado.
-     * @return true (sempre habilitado).
-     */
     @Override
-    public boolean isEnabled() {
-        return true;
-    }
+    public boolean isEnabled() { return true; }
 }

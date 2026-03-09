@@ -1,20 +1,26 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { jwtDecode } from 'jwt-decode';
 import api from '../api';
+import { UserRole } from '../types';
 
-// --- Interfaces ---
+/**
+ * Interface do que vem dentro do seu JWT gerado pelo Spring.
+ * Adicionamos 'senhaTemporaria' para o controle de primeiro acesso.
+ */
 interface DecodedToken {
   sub: string;
-  authorities: string[];
+  authorities: string[]; 
+  senhaTemporaria: boolean; // Flag crucial vinda do Backend
   exp: number;
 }
 
 interface AuthState {
   token: string | null;
   username: string | null;
-  isAdmin: boolean;
-  isAuthenticated: boolean; // Agora representa o ESTADO VERIFICADO
-  isLoading: boolean; // NOVO ESTADO: A verificar o token
+  role: UserRole | null;
+  senhaTemporaria: boolean; // Novo estado exportado
+  isAuthenticated: boolean;
+  isLoading: boolean;
   adminDataVersion: number;
   refreshAdminData: () => void;
   login: (token: string) => void;
@@ -26,58 +32,65 @@ const AuthContext = createContext<AuthState | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [token, setToken] = useState<string | null>(localStorage.getItem('authToken'));
   const [username, setUsername] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false); // Inicia como falso
-  const [isLoading, setIsLoading] = useState(true); // Inicia a carregar
+  const [role, setRole] = useState<UserRole | null>(null);
+  const [senhaTemporaria, setSenhaTemporaria] = useState(false); // Inicia como falso
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [adminDataVersion, setAdminDataVersion] = useState(0);
 
   useEffect(() => {
-    // Este useEffect agora trata da verificação do token
     if (token) {
       try {
         const decoded = jwtDecode<DecodedToken>(token);
         
-        // Verifica a expiração
+        // Verifica expiração (multiplica por 1000 pois exp vem em segundos)
         if (decoded.exp * 1000 > Date.now()) {
-          // Token válido e não expirado
           setUsername(decoded.sub);
-          const hasAdminRole = decoded.authorities && decoded.authorities.includes('ROLE_ADMIN');
-          setIsAdmin(hasAdminRole);
-          setIsAuthenticated(true); // <-- SÓ AGORA é que está autenticado
+          setSenhaTemporaria(decoded.senhaTemporaria); // Extrai a flag do Token
           
+          // Mapeamento de Roles do Spring Security
+          const roles = decoded.authorities || [];
+          let currentRole: UserRole = 'FUNCIONARIO';
+
+          if (roles.includes('ROLE_MASTER')) currentRole = 'MASTER';
+          else if (roles.includes('ROLE_GESTOR')) currentRole = 'GESTOR';
+          else if (roles.includes('ROLE_GERENTE')) currentRole = 'GERENTE';
+
+          setRole(currentRole);
+          setIsAuthenticated(true);
+          
+          // Injeta o token em todas as futuras chamadas do Axios
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         } else {
-          // Token expirado
-          console.log("[AuthContext] Token expirado.");
-          logout(); // (O logout irá definir isAuthenticated como falso)
+          logout();
         }
       } catch (error) {
-        console.error("[AuthContext] Token inválido:", error);
-        logout(); // (O logout irá definir isAuthenticated como falso)
+        console.error("[AuthContext] Erro ao decodificar token:", error);
+        logout();
       }
     } else {
-      // Sem token
-      setUsername(null);
-      setIsAdmin(false);
-      setIsAuthenticated(false);
-      localStorage.removeItem('authToken');
-      delete api.defaults.headers.common['Authorization'];
+      resetAuthState();
     }
-    // Terminámos a verificação (seja qual for o resultado)
     setIsLoading(false); 
-  }, [token]); // Roda sempre que o 'token' mudar
+  }, [token]);
+
+  const resetAuthState = () => {
+    setRole(null);
+    setUsername(null);
+    setSenhaTemporaria(false);
+    setIsAuthenticated(false);
+    delete api.defaults.headers.common['Authorization'];
+  };
 
   const login = (newToken: string) => {
-    // Quando fazemos login, salvamos no localStorage PRIMEIRO
     localStorage.setItem('authToken', newToken); 
-    // E depois atualizamos o estado 'token', o que dispara o useEffect acima
     setToken(newToken);
   };
 
   const logout = () => {
     localStorage.removeItem('authToken');
-    // Atualizamos o estado 'token' para null, o que dispara o useEffect
     setToken(null); 
+    resetAuthState();
   };
 
   const refreshAdminData = () => setAdminDataVersion(v => v + 1); 
@@ -85,25 +98,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const value = {
     token,
     username,
-    isAdmin,
-    isAuthenticated, // O estado agora é verificado
-    isLoading, // O estado de carregamento
+    role,
+    senhaTemporaria, // Disponível para o App.tsx bloquear rotas
+    isAuthenticated,
+    isLoading,
     login,
     logout,
     adminDataVersion, 
     refreshAdminData, 
   };
 
-  // Enquanto verifica o token inicial, não renderiza nada (ou um spinner)
-  // Isto impede o 'App.tsx' de tentar renderizar as rotas cedo demais
   if (isLoading) {
-    return null; // ou <p>A carregar...</p>
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-600"></div>
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Autenticando...</p>
+        </div>
+      </div>
+    );
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Hook (fica igual)
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
