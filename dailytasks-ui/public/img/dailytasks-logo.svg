@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667EEA"/>
+      <stop offset="100%" style="stop-color:#764BA2"/>
+    </linearGradient>
+    <filter id="shadow3">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+    <filter id="glow3">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="400" rx="80" fill="url(#bg3)"/>
+
+  <!-- Soft blobs -->
+  <ellipse cx="320" cy="80" rx="100" ry="80" fill="white" opacity="0.07"/>
+  <ellipse cx="80" cy="320" rx="80" ry="70" fill="white" opacity="0.07"/>
+
+  <!-- Main white card -->
+  <rect x="100" y="88" width="200" height="190" rx="24" fill="white" opacity="0.15" filter="url(#shadow3)"/>
+  <rect x="100" y="88" width="200" height="190" rx="24" fill="none" stroke="white" stroke-width="1.5" opacity="0.3"/>
+
+  <!-- Rounded task rows -->
+  <!-- Row 1 checked -->
+  <rect x="122" y="116" width="156" height="32" rx="10" fill="white" opacity="0.12"/>
+  <circle cx="143" cy="132" r="10" fill="#A8EDCA"/>
+  <polyline points="137,132 141,137 150,124" fill="none" stroke="#2D6A4F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="162" y="126" width="80" height="11" rx="5.5" fill="white" opacity="0.5"/>
+  <rect x="162" y="126" width="80" height="11" rx="5.5" fill="white" opacity="0.5"/>
+
+  <!-- Row 2 checked -->
+  <rect x="122" y="158" width="156" height="32" rx="10" fill="white" opacity="0.12"/>
+  <circle cx="143" cy="174" r="10" fill="#A8EDCA"/>
+  <polyline points="137,174 141,179 150,166" fill="none" stroke="#2D6A4F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="162" y="168" width="60" height="11" rx="5.5" fill="white" opacity="0.5"/>
+
+  <!-- Row 3 active/in progress -->
+  <rect x="122" y="200" width="156" height="32" rx="10" fill="white" opacity="0.2"/>
+  <circle cx="143" cy="216" r="10" fill="none" stroke="white" stroke-width="2" stroke-dasharray="4 2"/>
+  <rect x="162" y="210" width="90" height="11" rx="5.5" fill="white" opacity="0.7"/>
+
+  <!-- Row 4 pending -->
+  <rect x="122" y="242" width="156" height="32" rx="10" fill="white" opacity="0.07"/>
+  <circle cx="143" cy="258" r="10" fill="none" stroke="white" stroke-width="1.5" opacity="0.4"/>
+  <rect x="162" y="252" width="70" height="11" rx="5.5" fill="white" opacity="0.25"/>
+
+  <!-- Floating notification bubble -->
+  <circle cx="284" cy="100" r="22" fill="#FF6B9D" filter="url(#glow3)"/>
+  <text x="284" y="107" font-family="Arial" font-size="16" font-weight="800" fill="white" text-anchor="middle">3</text>
+
+  <!-- App name -->
+  <text x="200" y="330" font-family="'Georgia', serif" font-size="36" font-weight="700" fill="white" text-anchor="middle" letter-spacing="-0.5">DailyTasks</text>
+  <text x="200" y="356" font-family="'Georgia', serif" font-size="12" fill="white" text-anchor="middle" opacity="0.6" letter-spacing="5">YOUR DAILY PLANNER</text>
+</svg>
