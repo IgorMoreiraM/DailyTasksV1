@@ -14,18 +14,31 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.stream.Collectors;
 
+/**
+ * Serviço de Token JWT com suporte a Multi-tenancy e Claims personalizados.
+ * Versão 5.5: Inclui Roles e Empresa no Payload do Token.
+ */
 @Service
 public class TokenService {
 
     @Value("${api.security.token.secret}")
     private String secret;
 
+    // Constante para evitar erros de digitação entre geração e validação
+    private static final String ISSUER = "daily-tasks-api";
+
+    /**
+     * Gera o token JWT com claims personalizados.
+     * Importante: O Frontend pode ler esses claims para esconder/mostrar botões.
+     */
     public String gerarToken(Funcionario funcionario) {
         try {
             Algorithm algoritmo = Algorithm.HMAC256(secret);
             return JWT.create()
-                    .withIssuer("daily-tasks-api")
+                    .withIssuer(ISSUER)
                     .withSubject(funcionario.getUsername())
+                    // Claims para o Frontend e Lógica de Negócio
+                    .withClaim("empresaId", funcionario.getEmpresa() != null ? funcionario.getEmpresa().getId() : null)
                     .withClaim("senhaTemporaria", funcionario.isSenhaTemporaria())
                     .withClaim("authorities", funcionario.getAuthorities().stream()
                             .map(GrantedAuthority::getAuthority)
@@ -38,22 +51,27 @@ public class TokenService {
     }
 
     /**
-     * Valida o token e retorna o login do usuário (Subject).
-     * O nome deste método deve ser exatamente 'validateToken' para o SecurityFilter funcionar.
+     * Valida o token e retorna o Subject (Username).
+     * Se o Issuer não bater exatamente com o que foi gerado, o token é rejeitado.
      */
     public String validateToken(String tokenJWT) {
         try {
             Algorithm algoritmo = Algorithm.HMAC256(secret);
             return JWT.require(algoritmo)
-                    .withIssuer("daily-tasks-api")
+                    .withIssuer(ISSUER)
                     .build()
                     .verify(tokenJWT)
                     .getSubject();
         } catch (JWTVerificationException exception) {
-            return ""; // Retorna vazio caso o token seja inválido
+            // Log para debug em caso de falha na verificação
+            System.out.println(">>> [TokenService] Falha na verificação do JWT: " + exception.getMessage());
+            return "";
         }
     }
 
+    /**
+     * Define a expiração do token (8 horas).
+     */
     private Instant dataExpiracao() {
         return LocalDateTime.now().plusHours(8).toInstant(ZoneOffset.of("-03:00"));
     }

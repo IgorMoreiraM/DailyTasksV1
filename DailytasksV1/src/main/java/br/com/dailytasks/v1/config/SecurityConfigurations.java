@@ -18,8 +18,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Configuração de segurança central do Daily Tasks.
- * Gerencia a hierarquia de acesso e integra a política de CORS.
+ * Configuração de segurança definitiva.
+ * A ordem dos requestMatchers é CRÍTICA: as regras mais específicas devem vir antes das genéricas.
  */
 @Configuration
 @EnableWebSecurity
@@ -31,46 +31,55 @@ public class SecurityConfigurations {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-                // 1. ATIVA O CORS: Crucial para o Frontend (5173) falar com o Backend (8080)
                 .cors(Customizer.withDefaults())
-
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
 
-                        // --- 0. Pre-flight e Públicos ---
+                        // --- 0. ACESSO PÚBLICO ---
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/health-check").permitAll()
 
-                        // --- 1. Gestão de Pessoas (/funcionarios) ---
-                        // CORREÇÃO: Liberado para MASTER (Igor) e GESTOR (Clientes)
-                        .requestMatchers("/funcionarios/**").hasAnyRole("MASTER", "GESTOR")
+                        // --- 1. EXCLUSIVO MASTER ---
+                        .requestMatchers("/empresas", "/empresas/**").hasRole("MASTER")
 
-                        // --- 2. Gestão de Projetos e Estrutura ---
-                        // Apenas Master e Gestor podem criar/deletar projetos e colunas (listas)
-                        .requestMatchers("/projetos/**").hasAnyRole("MASTER", "GESTOR")
-                        .requestMatchers("/listas/**").hasAnyRole("MASTER", "GESTOR")
+                        // --- 2. GESTÃO DE PESSOAS (/funcionarios) ---
+                        // Permite alteração de senha própria para qualquer nível logado
+                        .requestMatchers(HttpMethod.PATCH, "/funcionarios/alterar-senha").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/funcionarios/*/upload-foto").authenticated()
 
-                        // --- 3. Operação de Tarefas ---
-                        // Gerentes criam tarefas. Funcionários apenas as executam.
-                        .requestMatchers(HttpMethod.POST, "/tarefas").hasAnyRole("MASTER", "GESTOR", "GERENTE")
+                        // Gestão administrativa (Criar/Deletar/Listar todos)
+                        .requestMatchers("/funcionarios", "/funcionarios/**").hasAnyRole("MASTER", "GESTOR")
+
+                        // --- 3. GESTÃO DE PROJETOS E ESTRUTURA (/projetos e /listas) ---
+
+                        // Escrita (POST, PUT, DELETE): Apenas Master e Gestor
+                        // Usamos a vírgula para cobrir tanto "/projetos" quanto "/projetos/..."
+                        .requestMatchers(HttpMethod.POST, "/projetos/**", "/projetos", "/listas/**", "/listas").hasAnyRole("MASTER", "GESTOR")
+                        .requestMatchers(HttpMethod.PUT, "/projetos/**", "/listas/**").hasAnyRole("MASTER", "GESTOR")
+                        .requestMatchers(HttpMethod.DELETE, "/projetos/**", "/listas/**").hasAnyRole("MASTER", "GESTOR")
+
+                        // Leitura (GET): Qualquer um logado (o isolamento de dados ocorre no Controller)
+                        .requestMatchers(HttpMethod.GET, "/projetos/**", "/projetos", "/listas/**", "/listas").authenticated()
+
+                        // --- 4. OPERAÇÃO DE TAREFAS (/tarefas) ---
+
+                        // Criação e Exclusão: Master, Gestor e Gerente
+                        .requestMatchers(HttpMethod.POST, "/tarefas/**", "/tarefas").hasAnyRole("MASTER", "GESTOR", "GERENTE")
                         .requestMatchers(HttpMethod.DELETE, "/tarefas/**").hasAnyRole("MASTER", "GESTOR", "GERENTE")
 
-                        // --- 4. Acesso Geral ---
-                        // Qualquer usuário logado pode ver seus dados e atualizar status de tarefas
-                        .requestMatchers(HttpMethod.GET, "/**").authenticated()
-                        .requestMatchers(HttpMethod.PATCH, "/tarefas/**").authenticated()
+                        // Leitura e Atualização de Status: Todos os membros da empresa
+                        .requestMatchers(HttpMethod.GET, "/tarefas/**", "/tarefas").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/tarefas/**").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/tarefas/**").authenticated()
 
+                        // --- 5. SEGURANÇA FINAL ---
                         .anyRequest().authenticated()
                 )
-                // Adiciona o filtro de JWT antes do filtro padrão do Spring
                 .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
-
-
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {

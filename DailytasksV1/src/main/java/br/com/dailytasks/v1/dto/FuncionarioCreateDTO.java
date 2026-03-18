@@ -7,5 +7,6 @@ public record FuncionarioCreateDTO(
         String username,
         String nomeCompleto,
         String password,
-        UserRole role
+        UserRole role,
+        Long empresaId
 ) {}

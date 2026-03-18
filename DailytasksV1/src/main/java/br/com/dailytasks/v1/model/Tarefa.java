@@ -6,10 +6,9 @@ import java.time.LocalDate;
 
 /**
  * Entidade que representa a unidade de trabalho (Tarefa).
- * Implementa a regra de negócio de vinculação obrigatória a um Projeto
- * e opcional a uma Lista de Tarefas.
+ * Versão 4.0: Implementa isolamento de dados por Empresa (Multi-tenancy).
  * * @author Equipe Daily Tasks
- * @version 2.1
+ * @version 4.0
  */
 @Entity(name = "Tarefa")
 @Table(name = "tarefas")
@@ -32,21 +31,28 @@ public class Tarefa {
 
     /**
      * Data limite para a conclusão da tarefa.
-     * Este campo é essencial para o controle de prazos no Dashboard.
      */
     @Column(name = "data_de_vencimento")
     private LocalDate dataDeVencimento;
 
     /**
      * Status atual da tarefa (PENDENTE, EM_ANDAMENTO, CONCLUIDA, etc).
-     * Mapeado como String para garantir legibilidade no banco de dados.
      */
     @Enumerated(EnumType.STRING)
     private TaskStatus status;
 
     /**
+     * ISOLAMENTO POR EMPRESA:
+     * Vincula a tarefa à empresa proprietária do projeto.
+     * Crucial para filtros globais de Dashboard e segurança.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "empresa_id")
+    private Empresa empresa;
+
+    /**
      * Projeto ao qual esta tarefa pertence.
-     * Vínculo obrigatório (optional = false).
+     * Vínculo obrigatório.
      */
     @ManyToOne(optional = false)
     @JoinColumn(name = "projeto_id")
@@ -54,7 +60,7 @@ public class Tarefa {
 
     /**
      * Lista de tarefas específica dentro de um projeto.
-     * Vínculo opcional, permitindo que tarefas existam fora de listas.
+     * Vínculo opcional.
      */
     @ManyToOne
     @JoinColumn(name = "lista_id")
@@ -62,7 +68,6 @@ public class Tarefa {
 
     /**
      * Funcionário responsável pela execução da tarefa.
-     * Utilizado para filtrar as "Minhas Tarefas" no Dashboard do funcionário.
      */
     @ManyToOne(optional = false)
     @JoinColumn(name = "funcionario_id")

@@ -7,36 +7,44 @@ import java.util.List;
 
 /**
  * Repositório para gestão de persistência da entidade Tarefa.
- * Fornece métodos de busca customizados para filtros de dashboard e projetos.
+ * Versão 4.0: Suporte total a Multi-tenancy (Isolamento por Empresa).
  * * @author Equipe Daily Tasks
- * @version 2.5
+ * @version 4.0
  */
 @Repository
 public interface TarefaRepository extends JpaRepository<Tarefa, Long> {
 
     /**
+     * MÉTODO DE ISOLAMENTO (Multi-tenancy):
+     * Busca todas as tarefas que pertencem a uma empresa específica.
+     * @param empresaId ID da empresa para filtragem global.
+     */
+    List<Tarefa> findByEmpresaId(Long empresaId);
+
+    /**
      * Busca tarefas vinculadas a uma lista específica (Ex: To-Do, Doing, Done).
-     * @param listaId ID da lista de tarefas.
      */
     List<Tarefa> findByListaTarefaId(Long listaId);
 
     /**
      * Busca todas as tarefas atribuídas a um funcionário específico.
-     * Essencial para a visão "Minhas Tarefas" do colaborador logado.
-     * @param funcionarioId ID do funcionário.
+     * Utilizado para a visão "Minhas Tarefas".
      */
     List<Tarefa> findByFuncionarioAtribuidoId(Long funcionarioId);
 
     /**
      * Busca todas as tarefas de um projeto específico.
-     * Este método é o "coração" da nova ProjectDetailPage.tsx.
-     * @param projetoId ID do projeto.
      */
     List<Tarefa> findByProjetoId(Long projetoId);
 
     /**
-     * (Opcional) Busca tarefas por projeto e status.
-     * Útil para gerar os dados do gráfico de rosca de um projeto específico.
+     * Busca tarefas por projeto e status para métricas e gráficos.
      */
     long countByProjetoIdAndStatus(Long projetoId, String status);
+
+    /**
+     * (Novo) Busca tarefas de um funcionário, garantindo o isolamento da empresa.
+     * Segurança extra para evitar que IDs de funcionários de outras empresas sejam acessados.
+     */
+    List<Tarefa> findByFuncionarioAtribuidoIdAndEmpresaId(Long funcionarioId, Long empresaId);
 }

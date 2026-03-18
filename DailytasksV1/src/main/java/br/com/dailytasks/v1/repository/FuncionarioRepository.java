@@ -10,24 +10,32 @@ import java.util.Optional;
 
 /**
  * Repositório para operações de persistência da entidade Funcionario.
- * Utiliza Spring Data JPA para geração automática de queries.
+ * Versão 4.0: Suporta isolamento de dados por Empresa (Multi-tenancy).
  * * @author Equipe Daily Tasks
- * @version 2.0
+ * @version 4.0
  */
 @Repository
 public interface FuncionarioRepository extends JpaRepository<Funcionario, Long> {
 
     /**
      * Busca um funcionário pelo nome de usuário.
-     * Retorna um Optional para evitar NullPointerException e facilitar o tratamento no Seeder e Security.
+     * Utilizado pelo Spring Security e pelo filtro de autenticação.
      */
     Optional<Funcionario> findByUsername(String username);
 
     /**
      * Filtra funcionários com base no seu nível de acesso (Role).
-     * Essencial para o MASTER visualizar apenas GESTORES e para GESTORES visualizarem sua equipe.
-     * * @param role O papel a ser filtrado (ex: UserRole.GESTOR)
-     * @return Lista de funcionários que possuem o papel especificado.
+     * Útil para o MASTER listar todos os GESTORES do sistema.
      */
     List<Funcionario> findByRole(UserRole role);
+
+    /**
+     * MÉTODO DE ISOLAMENTO (Multi-tenancy):
+     * Filtra a equipe completa de uma empresa específica.
+     * O Spring Data JPA entende o nome do método e gera o SQL:
+     * "SELECT * FROM funcionarios WHERE empresa_id = ?"
+     * * @param empresaId ID da empresa do Gestor logado.
+     * @return Lista de funcionários que pertencem apenas a esta empresa.
+     */
+    List<Funcionario> findByEmpresaId(Long empresaId);
 }

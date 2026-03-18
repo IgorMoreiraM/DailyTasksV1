@@ -17,10 +17,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Entidade que representa um Colaborador no sistema Daily Tasks.
- * Suporta hierarquia MASTER, GESTOR e GERENTE e controle de primeiro acesso.
- * * @author Equipe Daily Tasks
- * @version 3.0
+ * Entidade central de usuário.
+ * Implementa UserDetails para integração total com Spring Security.
  */
 @Entity(name = "Funcionario")
 @Table(name = "funcionarios")
@@ -45,21 +43,40 @@ public class Funcionario implements UserDetails {
     private String password;
 
     /**
-     * Define se o usuário ainda utiliza a senha gerada pelo Gestor.
-     * Se true, o Frontend deve obrigar a troca no primeiro acesso.
+     * Foto de perfil em Base64.
+     */
+    @Column(columnDefinition = "TEXT")
+    private String foto;
+
+    /**
+     * Soft Delete: Usuário desativado não consegue logar (isEnabled).
+     */
+    @Column(nullable = false)
+    private boolean ativo = true;
+
+    /**
+     * Flag para forçar troca de senha no primeiro login.
      */
     @Column(nullable = false)
     private boolean senhaTemporaria = true;
 
     /**
-     * Define o nível de acesso global do usuário.
+     * Nível de acesso (MASTER, GESTOR, GERENTE, FUNCIONARIO).
      */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserRole role;
 
     /**
-     * Relacionamento com as Equipes.
+     * Vínculo Multi-empresa.
+     * Se este campo estiver nulo para um GESTOR, as travas do Controller darão 403.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "empresa_id")
+    private Empresa empresa;
+
+    /**
+     * Equipes às quais o colaborador pertence.
      */
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
@@ -71,8 +88,8 @@ public class Funcionario implements UserDetails {
     private Set<Equipe> equipes = new HashSet<>();
 
     /**
-     * Mapeia o UserRole para as permissões do Spring Security.
-     * A hierarquia garante que um MASTER tenha todos os privilégios dos cargos inferiores.
+     * CONFIGURAÇÃO DE HIERARQUIA DE PERMISSÕES:
+     * O Spring Security exige o prefixo "ROLE_" aqui para que o hasRole() funcione.
      */
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -103,7 +120,7 @@ public class Funcionario implements UserDetails {
         return List.of(new SimpleGrantedAuthority("ROLE_FUNCIONARIO"));
     }
 
-    /* --- Implementação UserDetails (Padrão) --- */
+    /* --- Métodos do Contrato UserDetails --- */
 
     @Override
     public String getPassword() { return this.password; }
@@ -120,6 +137,11 @@ public class Funcionario implements UserDetails {
     @Override
     public boolean isCredentialsNonExpired() { return true; }
 
+    /**
+     * Se o campo 'ativo' for false, o Spring bloqueia o acesso imediatamente.
+     */
     @Override
-    public boolean isEnabled() { return true; }
+    public boolean isEnabled() {
+        return this.ativo;
+    }
 }
