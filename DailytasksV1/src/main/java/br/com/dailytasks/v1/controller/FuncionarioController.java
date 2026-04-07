@@ -19,10 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Controller de Gestão de Usuários com Multi-tenancy.
- * Versão 5.0: Suporte a Soft Delete, Fotos de Perfil e Isolamento de Dados.
- */
 @RestController
 @RequestMapping("/funcionarios")
 public class FuncionarioController {
@@ -36,17 +32,13 @@ public class FuncionarioController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    /**
-     * CRIAÇÃO DE USUÁRIOS:
-     * MASTER: Cria Gestores vinculados a empresas específicas.
-     * GESTOR: Cria sua equipe vinculada automaticamente à sua empresa.
-     */
     @PostMapping
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR')")
     public ResponseEntity<?> criarFuncionario(@RequestBody FuncionarioCreateDTO data, Authentication auth) {
         Funcionario logado = (Funcionario) auth.getPrincipal();
 
-        if (repository.findByUsername(data.username()) != null) {
+        // ✅ CORREÇÃO: Optional.isPresent() em vez de != null
+        if (repository.findByUsername(data.username()).isPresent()) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body("Erro: Este nome de usuário já está em uso.");
         }
 
@@ -62,7 +54,7 @@ public class FuncionarioController {
         novo.setPassword(passwordEncoder.encode(data.password()));
         novo.setRole(data.role());
         novo.setSenhaTemporaria(true);
-        novo.setAtivo(true); // Todo novo usuário nasce ativo
+        novo.setAtivo(true);
 
         if (logado.getRole() == UserRole.MASTER) {
             if (data.empresaId() == null) {
@@ -82,10 +74,6 @@ public class FuncionarioController {
         return ResponseEntity.status(HttpStatus.CREATED).body(new FuncionarioResponseDTO(salvo));
     }
 
-    /**
-     * LISTAGEM COM ISOLAMENTO:
-     * Retorna todos os usuários (ativos e inativos) para fins de gestão.
-     */
     @GetMapping
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR')")
     public ResponseEntity<List<FuncionarioResponseDTO>> listarTodos(Authentication auth) {
@@ -106,10 +94,6 @@ public class FuncionarioController {
         return ResponseEntity.ok(convertToDTO(lista));
     }
 
-    /**
-     * UPLOAD DE FOTO DE PERFIL:
-     * Salva a string Base64 da imagem no banco de dados.
-     */
     @PatchMapping("/{id}/upload-foto")
     public ResponseEntity<?> uploadFoto(@PathVariable Long id, @RequestBody Map<String, String> payload, Authentication auth) {
         Funcionario logado = (Funcionario) auth.getPrincipal();
@@ -119,17 +103,12 @@ public class FuncionarioController {
             if (!logado.getId().equals(id) && logado.getRole() == UserRole.FUNCIONARIO) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
-
             target.setFoto(base64Image);
             repository.save(target);
             return ResponseEntity.ok("Foto de perfil atualizada com sucesso!");
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * SOFT DELETE (DESATIVAÇÃO):
-     * Em vez de apagar, mudamos o status para inativo.
-     */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR')")
     public ResponseEntity<?> desativarFuncionario(@PathVariable Long id, Authentication auth) {
@@ -140,17 +119,12 @@ public class FuncionarioController {
                     (target.getEmpresa() == null || !target.getEmpresa().getId().equals(logado.getEmpresa().getId()))) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
-
-            target.setAtivo(false); // Desativa o login
+            target.setAtivo(false);
             repository.save(target);
             return ResponseEntity.noContent().build();
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * REATIVAÇÃO DE USUÁRIO:
-     * Permite que um Gestor restaure o acesso de um colaborador inativo.
-     */
     @PatchMapping("/{id}/ativar")
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR')")
     public ResponseEntity<?> ativarFuncionario(@PathVariable Long id, Authentication auth) {
@@ -161,17 +135,12 @@ public class FuncionarioController {
                     (target.getEmpresa() == null || !target.getEmpresa().getId().equals(logado.getEmpresa().getId()))) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
-
             target.setAtivo(true);
             repository.save(target);
             return ResponseEntity.ok("Usuário reativado com sucesso.");
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * RESET DE SENHA:
-     * Padrão temporário: 'tasks123'
-     */
     @PatchMapping("/{id}/reset-senha")
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR')")
     public ResponseEntity<?> resetarSenha(@PathVariable Long id, Authentication auth) {
@@ -183,7 +152,6 @@ public class FuncionarioController {
                     return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Acesso negado.");
                 }
             }
-
             target.setPassword(passwordEncoder.encode("tasks123"));
             target.setSenhaTemporaria(true);
             repository.save(target);
@@ -201,10 +169,8 @@ public class FuncionarioController {
                     (target.getEmpresa() == null || !target.getEmpresa().getId().equals(logado.getEmpresa().getId()))) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
-
             if (data.nomeCompleto() != null) target.setNomeCompleto(data.nomeCompleto());
             if (data.role() != null) target.setRole(data.role());
-
             return ResponseEntity.ok(new FuncionarioResponseDTO(repository.save(target)));
         }).orElse(ResponseEntity.notFound().build());
     }

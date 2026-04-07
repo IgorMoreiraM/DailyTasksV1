@@ -15,78 +15,81 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-/**
- * Controller definitivo para gestão de Tarefas com Isolamento de Empresa.
- * Garante que colaboradores e gestores operem apenas dentro do seu Tenant.
- * * @author Equipe Daily Tasks
- * @version 4.0
- */
 @RestController
 @RequestMapping("/tarefas")
 public class TarefaController {
 
-    @Autowired
-    private TarefaRepository tarefaRepository;
+    @Autowired private TarefaRepository tarefaRepository;
+    @Autowired private ListaTarefasRepository listaRepository;
+    @Autowired private FuncionarioRepository funcionarioRepository;
+    @Autowired private ProjetoRepository projetoRepository;
+    @Autowired private ProjetoMembroRepository projetoMembroRepository;
 
-    @Autowired
-    private ListaTarefasRepository listaRepository;
-
-    @Autowired
-    private FuncionarioRepository funcionarioRepository;
-
-    @Autowired
-    private ProjetoRepository projetoRepository;
-
-    @Autowired
-    private ProjetoMembroRepository projetoMembroRepository;
-
-    /**
-     * Lista tarefas de um projeto com verificação de segurança por empresa.
-     */
     @GetMapping("/projeto/{id}")
     public ResponseEntity<?> listarPorProjeto(@PathVariable Long id, Authentication auth) {
         Funcionario logado = (Funcionario) auth.getPrincipal();
 
-        return projetoRepository.findById(id).map(projeto -> {
-            // SEGURANÇA: Verifica se o projeto pertence à empresa do usuário
-            if (logado.getRole() != UserRole.MASTER &&
-                    !projeto.getEmpresa().getId().equals(logado.getEmpresa().getId())) {
-                return ResponseEntity.status(403).body("Acesso negado aos dados deste projeto.");
-            }
-
-            List<Tarefa> tarefas = tarefaRepository.findByProjetoId(id);
-            return ResponseEntity.ok(tarefas.stream().map(TarefaResponseDTO::new).collect(Collectors.toList()));
-        }).orElse(ResponseEntity.notFound().build());
-    }
-
-    /**
-     * Criação de Tarefa vinculada automaticamente à Empresa do criador.
-     */
-    @PostMapping
-    @PreAuthorize("hasAnyRole('MASTER', 'GESTOR', 'GERENTE')")
-    public ResponseEntity<?> criarTarefa(@RequestBody TarefaCreateDTO data, Authentication auth) {
-        Funcionario logado = (Funcionario) auth.getPrincipal();
-
-        // 1. Validação de Vínculo para Gerentes
-        if (logado.getRole() == UserRole.GERENTE) {
-            boolean ehMembro = projetoMembroRepository.existsByProjetoIdAndFuncionarioId(data.projetoId(), logado.getId());
-            if (!ehMembro) {
-                return ResponseEntity.status(403).body("Erro: Gerentes só podem criar tarefas em projetos aos quais estão vinculados.");
-            }
-        }
-
-        Optional<Projeto> projetoOpt = projetoRepository.findById(data.projetoId());
-        if (projetoOpt.isEmpty()) return ResponseEntity.status(404).body("Projeto não encontrado.");
+        Optional<Projeto> projetoOpt = projetoRepository.findById(id);
+        if (projetoOpt.isEmpty()) return ResponseEntity.notFound().build();
 
         Projeto projeto = projetoOpt.get();
 
-        // 2. Segurança: O projeto deve ser da mesma empresa que o usuário logado
-        if (logado.getRole() != UserRole.MASTER && !projeto.getEmpresa().getId().equals(logado.getEmpresa().getId())) {
-            return ResponseEntity.status(403).body("Erro: Você não pode criar tarefas em projetos de outra empresa.");
+        // MASTER acessa tudo, outros verificam empresa via repositório
+        if (logado.getRole() != UserRole.MASTER) {
+            if (logado.getEmpresa() == null) {
+                return ResponseEntity.status(403).body("Usuário sem empresa vinculada.");
+            }
+            // Busca o projeto com empresa carregada diretamente pelo repositório
+            boolean mesmaEmpresa = projetoRepository.existsByIdAndEmpresaId(id, logado.getEmpresa().getId());
+            if (!mesmaEmpresa) {
+                return ResponseEntity.status(403).body("Acesso negado a este projeto.");
+            }
+        }
+
+        List<Tarefa> tarefas = tarefaRepository.findByProjetoId(id);
+        return ResponseEntity.ok(tarefas.stream().map(TarefaResponseDTO::new).collect(Collectors.toList()));
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAnyRole('MASTER', 'GESTOR', 'GERENTE')")
+    public ResponseEntity<?> criarTarefa(@RequestBody TarefaCreateDTO data, Authentication auth) {
+        System.out.println(">>> CRIAR TAREFA: chegou no controller");
+        System.out.println(">>> AUTH: " + (auth != null ? auth.getName() : "NULL"));
+        System.out.println(">>> AUTHORITIES: " + (auth != null ? auth.getAuthorities() : "NULL"));
+        System.out.println(">>> DATA: " + data);
+
+        Funcionario logado = (Funcionario) auth.getPrincipal();
+        System.out.println(">>> EMPRESA DO LOGADO: " + (logado.getEmpresa() != null ? logado.getEmpresa().getId() : "NULL"));
+
+        Optional<Projeto> projetoOpt = projetoRepository.findById(data.projetoId());
+        if (projetoOpt.isEmpty()) return ResponseEntity.status(404).body("Projeto não encontrado.");
+        Projeto projeto = projetoOpt.get();
+
+        // Verificação de empresa via repositório (não depende de lazy loading)
+        if (logado.getRole() != UserRole.MASTER) {
+            if (logado.getEmpresa() == null) {
+                return ResponseEntity.status(403).body("Usuário sem empresa vinculada.");
+            }
+            boolean mesmaEmpresa = projetoRepository.existsByIdAndEmpresaId(
+                    data.projetoId(), logado.getEmpresa().getId()
+            );
+            if (!mesmaEmpresa) {
+                return ResponseEntity.status(403).body("Projeto pertence a outra empresa.");
+            }
+        }
+
+        // Gerente precisa ser membro do projeto
+        if (logado.getRole() == UserRole.GERENTE) {
+            boolean ehMembro = projetoMembroRepository.existsByProjetoIdAndFuncionarioId(
+                    data.projetoId(), logado.getId()
+            );
+            if (!ehMembro) {
+                return ResponseEntity.status(403).body("Gerente não é membro deste projeto.");
+            }
         }
 
         Optional<Funcionario> funcOpt = funcionarioRepository.findById(data.funcionarioId());
-        if (funcOpt.isEmpty()) return ResponseEntity.status(404).body("Funcionário responsável não encontrado.");
+        if (funcOpt.isEmpty()) return ResponseEntity.status(404).body("Funcionário não encontrado.");
 
         Tarefa novaTarefa = new Tarefa();
         novaTarefa.setTitulo(data.titulo());
@@ -95,8 +98,6 @@ public class TarefaController {
         novaTarefa.setStatus(TaskStatus.PENDENTE);
         novaTarefa.setProjeto(projeto);
         novaTarefa.setFuncionarioAtribuido(funcOpt.get());
-
-        // VÍNCULO OBRIGATÓRIO: Define a empresa da tarefa
         novaTarefa.setEmpresa(logado.getEmpresa());
 
         if (data.listaId() != null) {
@@ -107,9 +108,6 @@ public class TarefaController {
         return ResponseEntity.status(201).body(new TarefaResponseDTO(salva));
     }
 
-    /**
-     * Atualização de Tarefa com proteção Multi-tenancy.
-     */
     @PutMapping("/{id}")
     public ResponseEntity<?> atualizarTarefa(
             @PathVariable Long id,
@@ -122,41 +120,42 @@ public class TarefaController {
         Tarefa tarefa = tarefaOpt.get();
         Funcionario logado = (Funcionario) auth.getPrincipal();
 
-        // SEGURANÇA: A tarefa deve ser da mesma empresa
-        if (logado.getRole() != UserRole.MASTER &&
-                (tarefa.getEmpresa() == null || !tarefa.getEmpresa().getId().equals(logado.getEmpresa().getId()))) {
-            return ResponseEntity.status(403).body("Acesso negado: Esta tarefa pertence a outra organização.");
+        // Verifica empresa via repositório
+        if (logado.getRole() != UserRole.MASTER) {
+            if (logado.getEmpresa() == null ||
+                    tarefa.getEmpresa() == null ||
+                    !tarefa.getEmpresa().getId().equals(logado.getEmpresa().getId())) {
+                return ResponseEntity.status(403).body("Acesso negado.");
+            }
         }
 
-        // Verificação de liderança para Gerentes
-        boolean ehLiderNoProjeto = projetoMembroRepository.findByProjetoId(tarefa.getProjeto().getId()).stream()
-                .anyMatch(m -> m.getFuncionario().getId().equals(logado.getId()) &&
-                        m.getPapel() == ProjetoMembro.ProjetoPapel.LIDER_PROJETO);
+        boolean ehLider = projetoMembroRepository
+                .findByProjetoId(tarefa.getProjeto().getId()).stream()
+                .anyMatch(m -> m.getFuncionario().getId().equals(logado.getId())
+                        && m.getPapel() == ProjetoMembro.ProjetoPapel.LIDER_PROJETO);
 
-        boolean temPoderTotal = logado.getRole() == UserRole.MASTER ||
-                logado.getRole() == UserRole.GESTOR ||
-                ehLiderNoProjeto;
+        boolean temPoderTotal = logado.getRole() == UserRole.MASTER
+                || logado.getRole() == UserRole.GESTOR
+                || ehLider;
 
         boolean isOwner = tarefa.getFuncionarioAtribuido().getId().equals(logado.getId());
 
-        // Permissão de Status
         if (payload.containsKey("status")) {
             if (!temPoderTotal && !isOwner) {
-                return ResponseEntity.status(403).body("Sem permissão para alterar o status desta tarefa.");
+                return ResponseEntity.status(403).body("Sem permissão para alterar status.");
             }
             tarefa.setStatus(TaskStatus.valueOf(payload.get("status").toString().toUpperCase()));
         }
 
-        // Permissão de Conteúdo
         if (temPoderTotal) {
-            if (payload.containsKey("titulo")) tarefa.setTitulo(payload.get("titulo").toString());
-            if (payload.containsKey("descricao")) tarefa.setDescricao(payload.get("descricao").toString());
-
+            if (payload.containsKey("titulo"))
+                tarefa.setTitulo(payload.get("titulo").toString());
+            if (payload.containsKey("descricao"))
+                tarefa.setDescricao(payload.get("descricao").toString());
             if (payload.containsKey("funcionarioId")) {
                 Long funcId = Long.valueOf(payload.get("funcionarioId").toString());
                 funcionarioRepository.findById(funcId).ifPresent(tarefa::setFuncionarioAtribuido);
             }
-
             if (payload.containsKey("listaId")) {
                 Object listaIdObj = payload.get("listaId");
                 if (listaIdObj == null) {
@@ -175,25 +174,27 @@ public class TarefaController {
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR', 'GERENTE')")
     public ResponseEntity<?> deletarTarefa(@PathVariable Long id, Authentication auth) {
         Funcionario logado = (Funcionario) auth.getPrincipal();
-        Optional<Tarefa> tarefaOpt = tarefaRepository.findById(id);
 
+        Optional<Tarefa> tarefaOpt = tarefaRepository.findById(id);
         if (tarefaOpt.isEmpty()) return ResponseEntity.notFound().build();
         Tarefa tarefa = tarefaOpt.get();
 
-        // SEGURANÇA: Isolamento de empresa
-        if (logado.getRole() != UserRole.MASTER &&
-                (tarefa.getEmpresa() == null || !tarefa.getEmpresa().getId().equals(logado.getEmpresa().getId()))) {
-            return ResponseEntity.status(403).body("Operação não permitida.");
+        if (logado.getRole() != UserRole.MASTER) {
+            if (logado.getEmpresa() == null ||
+                    tarefa.getEmpresa() == null ||
+                    !tarefa.getEmpresa().getId().equals(logado.getEmpresa().getId())) {
+                return ResponseEntity.status(403).body("Operação não permitida.");
+            }
         }
 
-        // Se for gerente, validar vínculo no projeto
         if (logado.getRole() == UserRole.GERENTE) {
             boolean ehMembro = projetoMembroRepository.existsByProjetoIdAndFuncionarioId(
-                    tarefa.getProjeto().getId(), logado.getId());
+                    tarefa.getProjeto().getId(), logado.getId()
+            );
             if (!ehMembro) return ResponseEntity.status(403).body("Sem permissão.");
         }
 
         tarefaRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
-}
+};

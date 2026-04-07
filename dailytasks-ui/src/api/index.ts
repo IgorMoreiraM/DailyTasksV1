@@ -1,30 +1,82 @@
-import axios from 'axios';
+import axios from 'axios'
 
-// 1. URL base da nossa API Java
-const API_URL = 'http://localhost:8080';
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 
-// 2. Cria uma "instância" do Axios
 const api = axios.create({
-  baseURL: API_URL,
-});
+  baseURL: BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
+})
 
-// 3. Interceptor de Requisição
-// Isso é executado ANTES de CADA requisição que fizermos
 api.interceptors.request.use(
   (config) => {
-    // 4. Pega o token do localStorage
-    const token = localStorage.getItem('authToken');
-    
-    // 5. Se o token existir, anexa ele ao cabeçalho Authorization
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config; // Continua a requisição com o novo cabeçalho
+    const token = localStorage.getItem('dt_token')
+    if (token) config.headers.Authorization = `Bearer ${token}`
+    return config
   },
-  (error) => {
-    // Em caso de erro na configuração da requisição
-    return Promise.reject(error);
-  }
-);
+  (error) => Promise.reject(error),
+)
 
-export default api;
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('dt_token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  },
+)
+
+export default api
+
+export const authApi = {
+  login: (username: string, password: string) =>
+    api.post('/login', { username, password }),
+}
+
+export const empresaApi = {
+  listar:   ()             => api.get('/empresas'),
+  detalhar: (id: number)   => api.get(`/empresas/${id}`),
+  criar:    (data: object) => api.post('/empresas', data),
+  deletar:  (id: number)   => api.delete(`/empresas/${id}`),
+}
+
+export const funcionarioApi = {
+  listar:       ()                           => api.get('/funcionarios'),
+  criar:        (data: object)               => api.post('/funcionarios', data),
+  atualizar:    (id: number, data: object)   => api.put(`/funcionarios/${id}`, data),
+  desativar:    (id: number)                 => api.delete(`/funcionarios/${id}`),
+  ativar:       (id: number)                 => api.patch(`/funcionarios/${id}/ativar`),
+  resetSenha:   (id: number)                 => api.patch(`/funcionarios/${id}/reset-senha`),
+  alterarSenha: (novaSenha: string)          => api.patch('/funcionarios/alterar-senha', { novaSenha }),
+  uploadFoto:   (id: number, foto: string)   => api.patch(`/funcionarios/${id}/upload-foto`, { foto }),
+}
+
+export const projetoApi = {
+  listar:          ()                           => api.get('/projetos'),
+  detalhar:        (id: number)                 => api.get(`/projetos/${id}`),
+  criar:           (data: object)               => api.post('/projetos', data),
+  atualizar:       (id: number, data: object)   => api.put(`/projetos/${id}`, data),
+  deletar:         (id: number)                 => api.delete(`/projetos/${id}`),
+  listarMembros:   (id: number)                 => api.get(`/projetos/${id}/membros`),
+  adicionarMembro: (id: number, data: object)   => api.post(`/projetos/${id}/membros`, data),
+}
+
+export const listaApi = {
+  listarPorProjeto: (projetoId: number) => api.get(`/listas/projeto/${projetoId}`),
+  criar:            (data: object)       => api.post('/listas', data),
+  atualizar:        (id: number, data: object) => api.put(`/listas/${id}`, data),
+  deletar:          (id: number)         => api.delete(`/listas/${id}`),
+}
+
+export const tarefaApi = {
+  listarPorProjeto: (projetoId: number)         => api.get(`/tarefas/projeto/${projetoId}`),
+  criar:            (data: object)               => api.post('/tarefas', data),
+  atualizar:        (id: number, data: object)   => api.put(`/tarefas/${id}`, data),
+  deletar:          (id: number)                 => api.delete(`/tarefas/${id}`),
+}
+
+export const membroApi = {
+  atribuirLider: (projetoId: number, funcionarioId: number) =>
+    api.post('/projeto-membros/atribuir-lider', { projetoId, funcionarioId }),
+}

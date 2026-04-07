@@ -1,8 +1,8 @@
 package br.com.dailytasks.v1.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.util.List;
 
 @Entity
@@ -22,11 +22,13 @@ public class Empresa {
     private String nome;
 
     @Column(unique = true)
-    private String cnpj; // Opcional, mas profissional
+    private String cnpj;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "empresa")
     private List<Funcionario> funcionarios;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "empresa")
     private List<Projeto> projetos;
 }

@@ -1,121 +1,87 @@
-import { Routes, Route, Navigate, To } from 'react-router-dom';
-import { useAuth } from './contexts/AuthContext';
-import { LoginPage } from './pages/LoginPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { AdminPage } from './pages/AdminPage';
-import { CreatePage } from './pages/CreatePage';
-import { MasterPanel } from './pages/MasterPanel';
-import { ProjectDetailPage } from './pages/ProjectDetailPage';
-import { ChangePasswordPage } from './pages/ChangePasswordPage'; // Nova página
-import './App.css';
+import { Routes, Route, Navigate, type To } from 'react-router-dom'
+import { useAuth } from './contexts/AuthContext'
+import { LoginPage }             from './pages/LoginPage'
+import { ChangePasswordPage }    from './pages/ChangePasswordPage'
+import { MasterDashboard }       from './pages/master/MasterDashboard'
+import { GestorDashboard }       from './pages/gestor/GestorDashboard'
+import { GerenteDashboard }      from './pages/gerente/GerenteDashboard'
+import { FuncionarioDashboard }  from './pages/funcionario/FuncionarioDashboard'
+import { ProjectDetailPage }     from './pages/projeto/ProjectDetailPage'
+import { PerfilPage } from './pages/shared/PerfilPage'
 
-/**
- * Componente para proteger rotas baseadas em autenticação, permissões e status da conta.
- */
-interface ProtectedRouteProps {
-  isAllowed: boolean;
-  redirectTo?: To;
-  children: React.ReactElement;
+interface ProtectedProps {
+  allowed: boolean
+  redirectTo?: To
+  children: React.ReactElement
 }
 
-const ProtectedRoute = ({ isAllowed, redirectTo = "/login", children }: ProtectedRouteProps) => {
-  if (!isAllowed) {
-    return <Navigate to={redirectTo} replace />;
+function Protected({ allowed, redirectTo = '/login', children }: ProtectedProps) {
+  if (!allowed) return <Navigate to={redirectTo} replace />
+  return children
+}
+
+function HomeRedirect() {
+  const { isAuthenticated, role, senhaTemporaria } = useAuth()
+  if (!isAuthenticated) return <Navigate to="/login"          replace />
+  if (senhaTemporaria)  return <Navigate to="/primeiro-acesso" replace />
+  switch (role) {
+    case 'MASTER':  return <Navigate to="/master"      replace />
+    case 'GESTOR':  return <Navigate to="/gestor"      replace />
+    case 'GERENTE': return <Navigate to="/gerente"     replace />
+    default:        return <Navigate to="/funcionario" replace />
   }
-  return children;
-};
+}
 
-function App() {
-  const { isAuthenticated, role, senhaTemporaria } = useAuth();
-
-  // Atalhos de permissão
-  const isMaster = role === 'MASTER';
-  const isGestorOuMaster = role === 'MASTER' || role === 'GESTOR';
-
-  /**
-   * Lógica de Redirecionamento Centralizada
-   * Garante que o usuário vá para o lugar certo baseado no cargo e na necessidade de trocar senha.
-   */
-  const getHomeRedirect = () => {
-    if (!isAuthenticated) return "/login";
-    if (senhaTemporaria) return "/primeiro-acesso"; // Prioridade máxima
-    
-    if (isMaster) return "/master";
-    if (isGestorOuMaster) return "/admin";
-    return "/dashboard";
-  };
+export default function App() {
+  const { isAuthenticated, role, senhaTemporaria } = useAuth()
+  const auth   = isAuthenticated
+  const noTemp = !senhaTemporaria
 
   return (
     <Routes>
-      {/* --- ROTA PÚBLICA --- */}
       <Route path="/login" element={<LoginPage />} />
 
-      {/* --- ROTA DE TROCA DE SENHA OBRIGATÓRIA --- */}
-      <Route 
-        path="/primeiro-acesso" 
-        element={
-          <ProtectedRoute isAllowed={isAuthenticated}>
-            <ChangePasswordPage />
-          </ProtectedRoute>
-        } 
-      />
+      <Route path="/primeiro-acesso" element={
+        <Protected allowed={auth}><ChangePasswordPage /></Protected>
+      }/>
 
-      {/* --- ROTAS PROTEGIDAS (Só acessíveis se senhaTemporaria for FALSE) --- */}
-      
-      {/* MASTER PANEL */}
-      <Route
-        path="/master"
-        element={
-          <ProtectedRoute isAllowed={isAuthenticated && isMaster && !senhaTemporaria} redirectTo={getHomeRedirect()}>
-            <MasterPanel />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/master/*" element={
+        <Protected allowed={auth && role === 'MASTER' && noTemp}>
+          <MasterDashboard />
+        </Protected>
+      }/>
 
-      {/* DETALHES DO PROJETO */}
-      <Route
-        path="/projetos/:id"
-        element={
-          <ProtectedRoute isAllowed={isAuthenticated && !senhaTemporaria} redirectTo={getHomeRedirect()}>
-            <ProjectDetailPage />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/gestor/*" element={
+        <Protected allowed={auth && role === 'GESTOR' && noTemp}>
+          <GestorDashboard />
+        </Protected>
+      }/>
 
-      {/* DASHBOARD GERAL */}
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute isAllowed={isAuthenticated && !senhaTemporaria} redirectTo={getHomeRedirect()}>
-            <DashboardPage />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/gerente/*" element={
+        <Protected allowed={auth && role === 'GERENTE' && noTemp}>
+          <GerenteDashboard />
+        </Protected>
+      }/>
 
-      {/* ADMINISTRAÇÃO */}
-      <Route
-        path="/admin"
-        element={
-          <ProtectedRoute isAllowed={isAuthenticated && isGestorOuMaster && !senhaTemporaria} redirectTo={getHomeRedirect()}>
-            <AdminPage />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/funcionario/*" element={
+        <Protected allowed={auth && noTemp}>
+          <FuncionarioDashboard />
+        </Protected>
+      }/>
 
-      {/* CRIAÇÃO */}
-      <Route
-        path="/criar"
-        element={
-          <ProtectedRoute isAllowed={isAuthenticated && isGestorOuMaster && !senhaTemporaria} redirectTo={getHomeRedirect()}>
-            <CreatePage />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/projetos/:id" element={
+        <Protected allowed={auth && noTemp}>
+          <ProjectDetailPage />
+        </Protected>
+      }/>
 
-      {/* --- REDIRECIONAMENTO PADRÃO INTELIGENTE --- */}
-      <Route path="*" element={<Navigate to={getHomeRedirect()} replace />} />
+      <Route path="/perfil" element={
+        <Protected allowed={auth && noTemp}>
+          <PerfilPage />
+        </Protected>
+      } />
+
+      <Route path="*" element={<HomeRedirect />} />
     </Routes>
-  );
+  )
 }
-
-export default App;
