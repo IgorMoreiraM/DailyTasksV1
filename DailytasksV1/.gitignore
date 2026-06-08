@@ -31,3 +31,13 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Credenciais e configurações sensíveis ###
+src/main/resources/application.properties
+src/main/resources/application-*.properties
+src/main/resources/*.properties
+src/main/resources/*.yml
+src/main/resources/*.yaml
+*.env
+.env
+.env.*

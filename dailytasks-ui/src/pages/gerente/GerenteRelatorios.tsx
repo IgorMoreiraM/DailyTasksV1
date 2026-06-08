@@ -1,29 +1,25 @@
 import { useState, useEffect, useCallback } from 'react'
-import { BarChart2, CheckSquare, Clock, AlertTriangle, Users, FolderKanban, Download, Loader2 } from 'lucide-react'
+import { BarChart2, CheckSquare, Clock, AlertTriangle, FolderKanban, Download, Loader2 } from 'lucide-react'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
-import { Card, CardHeader, CardTitle, StatCard, Avatar, Spinner, ProgressBar } from '../../components/ui'
-import { projetoApi, tarefaApi, funcionarioApi } from '../../api'
-import type { Projeto, Tarefa, Funcionario } from '../../types'
+import { Card, CardHeader, CardTitle, StatCard, Spinner, ProgressBar } from '../../components/ui'
+import { projetoApi, tarefaApi } from '../../api'
+import type { Projeto, Tarefa } from '../../types'
 
-export function GestorRelatorios() {
-  const [projetos,     setProjetos]     = useState<Projeto[]>([])
-  const [tarefas,      setTarefas]      = useState<Tarefa[]>([])
-  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([])
-  const [loading,      setLoading]      = useState(true)
-  const [exportando,   setExportando]   = useState(false)
+export function GerenteRelatorios() {
+  const [projetos,  setProjetos]  = useState<Projeto[]>([])
+  const [tarefas,   setTarefas]   = useState<Tarefa[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [exportando, setExportando] = useState(false)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [rP, rF] = await Promise.all([projetoApi.listar(), funcionarioApi.listar()])
+      const rP = await projetoApi.listar()
       const projs: Projeto[] = Array.isArray(rP.data) ? rP.data : []
       setProjetos(projs)
-      setFuncionarios(Array.isArray(rF.data) ? rF.data : [])
       const reqs = await Promise.allSettled(projs.map(p => tarefaApi.listarPorProjeto(p.id)))
       const todas: Tarefa[] = []
-      reqs.forEach(r => {
-        if (r.status === 'fulfilled' && Array.isArray(r.value.data)) todas.push(...r.value.data)
-      })
+      reqs.forEach(r => { if (r.status === 'fulfilled' && Array.isArray(r.value.data)) todas.push(...r.value.data) })
       setTarefas(todas)
     } catch (err) { console.error(err) }
     finally { setLoading(false) }
@@ -41,17 +37,6 @@ export function GestorRelatorios() {
     t.dataDeVencimento && t.dataDeVencimento < hoje &&
     t.status !== 'CONCLUIDA' && t.status !== 'CANCELADA'
   ).length
-
-  const rankingFunc = funcionarios.map(f => {
-    const minhas      = tarefas.filter(t => t.funcionarioId === f.id)
-    const feitas      = minhas.filter(t => t.status === 'CONCLUIDA').length
-    const emAndamento = minhas.filter(t => t.status === 'EM_ANDAMENTO').length
-    const atrasadasF  = minhas.filter(t =>
-      t.dataDeVencimento && t.dataDeVencimento < hoje &&
-      t.status !== 'CONCLUIDA' && t.status !== 'CANCELADA'
-    ).length
-    return { ...f, total: minhas.length, feitas, emAndamento, atrasadasF }
-  }).filter(f => f.total > 0).sort((a, b) => b.feitas - a.feitas)
 
   const progressoProjetos = projetos.map(p => {
     const ts     = tarefas.filter(t => t.projetoId === p.id)
@@ -92,6 +77,7 @@ export function GestorRelatorios() {
       const AMBER: C3 = [245, 158, 11 ]
       const RED:   C3 = [239, 68,  68 ]
       const WHITE: C3 = [255, 255, 255]
+      const VIOLET: C3 = [124, 58, 237]
 
       const novaLinha = (h: number) => {
         if (y + h > pdf.internal.pageSize.getHeight() - margem) { pdf.addPage(); y = margem }
@@ -102,16 +88,16 @@ export function GestorRelatorios() {
       }
 
       // CABECALHO
-      pdf.setFillColor(...TEAL); pdf.rect(0, 0, pageW, 28, 'F')
+      pdf.setFillColor(...VIOLET); pdf.rect(0, 0, pageW, 28, 'F')
       pdf.setFont('helvetica', 'bold'); pdf.setFontSize(18); pdf.setTextColor(...WHITE)
       pdf.text('DailyTasks', margem, 13)
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10)
-      pdf.text('Relatorio de Desempenho', margem, 21)
-      pdf.setFontSize(9); pdf.setTextColor(200, 230, 235)
+      pdf.text('Relatorio do Gerente', margem, 21)
+      pdf.setFontSize(9); pdf.setTextColor(220, 200, 255)
       pdf.text('Gerado em ' + dataStr, pageW - margem, 21, { align: 'right' })
       y = 38
 
-      // CARDS
+      // CARDS RESUMO
       const cardW = (colW - 9) / 4
       const cards = [
         { label: 'Total',        value: total,      cor: TEAL  },
@@ -136,6 +122,7 @@ export function GestorRelatorios() {
       pdf.text('Distribuicao por Status', margem, y); y += 6
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(...MUTED)
       pdf.text(total + ' tarefas no total', margem, y); y += 8
+
       const distPDF = [
         { label: 'Concluidas',   value: concluidas, cor: GREEN },
         { label: 'Em andamento', value: andamento,  cor: BLUE  },
@@ -154,63 +141,23 @@ export function GestorRelatorios() {
       y += 6
 
       // PROGRESSO POR PROJETO
-      novaLinha(20 + progressoProjetos.length * 14)
+      novaLinha(20 + progressoProjetos.length * 16)
       pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.setTextColor(...DARK)
       pdf.text('Progresso por Projeto', margem, y); y += 6
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(...MUTED)
       pdf.text(projetos.length + ' projeto(s)', margem, y); y += 8
+
       progressoProjetos.forEach(p => {
-        novaLinha(14)
-        const corB: C3 = p.pct === 100 ? GREEN : TEAL
+        novaLinha(16)
+        const corB: C3 = p.pct === 100 ? GREEN : VIOLET
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(...DARK)
         pdf.text(p.nome.length > 35 ? p.nome.substring(0, 35) + '...' : p.nome, margem, y)
-        pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...TEAL)
+        pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...VIOLET)
         pdf.text(p.pct + '%', pageW - margem, y, { align: 'right' })
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(...MUTED)
-        pdf.text(p.feitas + '/' + p.total + ' tarefas', margem, y + 5)
-        if (p.atrasadas > 0) { pdf.setTextColor(...RED); pdf.text('! ' + p.atrasadas + ' atrasada(s)', margem + 40, y + 5) }
-        barra(margem, y + 7, colW, p.pct, corB); y += 16
-      })
-      y += 6
-
-      // RANKING
-      novaLinha(30)
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.setTextColor(...DARK)
-      pdf.text('Desempenho da Equipe', margem, y); y += 6
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(...MUTED)
-      pdf.text('Ordenado por tarefas concluidas', margem, y); y += 8
-      pdf.setFillColor(...TEAL); pdf.rect(margem, y - 4, colW, 8, 'F')
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8); pdf.setTextColor(...WHITE)
-      const thCols = [
-        { t: '#',           x: margem + 2   },
-        { t: 'Funcionario', x: margem + 12  },
-        { t: 'Total',       x: margem + 85  },
-        { t: 'Concluidas',  x: margem + 105 },
-        { t: 'Andamento',   x: margem + 128 },
-        { t: 'Atrasadas',   x: margem + 152 },
-        { t: 'Taxa',        x: margem + 166 },
-      ]
-      thCols.forEach(c => pdf.text(c.t, c.x, y + 0.5))
-      y += 10
-      rankingFunc.forEach((f, i) => {
-        novaLinha(10)
-        const taxa   = f.total > 0 ? Math.round(f.feitas / f.total * 100) : 0
-        const bgC: C3 = i % 2 === 0 ? WHITE : LIGHT
-        pdf.setFillColor(...bgC); pdf.rect(margem, y - 5, colW, 9, 'F')
-        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8.5); pdf.setTextColor(...DARK)
-        const pos = i === 0 ? '1o' : i === 1 ? '2o' : i === 2 ? '3o' : String(i + 1)
-        pdf.text(pos, margem + 2, y)
-        pdf.setFont('helvetica', 'normal')
-        const nomeF = f.nomeCompleto.length > 22 ? f.nomeCompleto.substring(0, 22) + '...' : f.nomeCompleto
-        pdf.text(nomeF, margem + 12, y)
-        pdf.text(String(f.total), margem + 88, y)
-        pdf.setTextColor(...GREEN); pdf.text(String(f.feitas),      margem + 110, y)
-        pdf.setTextColor(...BLUE);  pdf.text(String(f.emAndamento), margem + 133, y)
-        const cA: C3 = f.atrasadasF > 0 ? RED : MUTED
-        pdf.setTextColor(...cA); pdf.text(String(f.atrasadasF), margem + 157, y)
-        pdf.setTextColor(...DARK); pdf.setFont('helvetica', 'bold')
-        pdf.text(taxa + '%', margem + 168, y)
-        y += 9
+        pdf.text(p.feitas + '/' + p.total + ' tarefas concluidas', margem, y + 5)
+        if (p.atrasadas > 0) { pdf.setTextColor(...RED); pdf.text('! ' + p.atrasadas + ' atrasada(s)', margem + 55, y + 5) }
+        barra(margem, y + 8, colW, p.pct, corB); y += 18
       })
 
       // RODAPE
@@ -220,22 +167,21 @@ export function GestorRelatorios() {
         const pageH = pdf.internal.pageSize.getHeight()
         pdf.setFillColor(...LIGHT); pdf.rect(0, pageH - 10, pageW, 10, 'F')
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(...MUTED)
-        pdf.text('DailyTasks - Relatorio Confidencial', margem, pageH - 4)
+        pdf.text('DailyTasks - Relatorio do Gerente', margem, pageH - 4)
         pdf.text('Pagina ' + pg + ' de ' + totalPgs, pageW - margem, pageH - 4, { align: 'right' })
       }
 
-      pdf.save('relatorio-dailytasks-' + new Date().toLocaleDateString('pt-BR').replace(/\//g, '-') + '.pdf')
-
+      pdf.save('relatorio-gerente-' + new Date().toLocaleDateString('pt-BR').replace(/\//g, '-') + '.pdf')
     } catch (err) {
       console.error('Erro ao exportar PDF:', err)
-      alert('Erro ao gerar PDF. Tente novamente.')
+      alert('Erro ao gerar PDF.')
     } finally {
       setExportando(false)
     }
   }
 
   if (loading) return (
-    <DashboardLayout title="Relatorios" breadcrumb="Gestor - Relatorios">
+    <DashboardLayout title="Relatórios" breadcrumb="Gerente · Relatórios">
       <div className="flex justify-center py-20"><Spinner size={32} /></div>
     </DashboardLayout>
   )
@@ -243,39 +189,35 @@ export function GestorRelatorios() {
   const dataAtual = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
 
   return (
-    <DashboardLayout title="Relatórios" breadcrumb="Gestor · Relatórios"
+    <DashboardLayout title="Relatórios" breadcrumb="Gerente · Relatórios"
       actions={
-        <button
-          onClick={exportarPDF}
-          disabled={exportando}
+        <button onClick={exportarPDF} disabled={exportando}
           className="inline-flex items-center gap-2 h-9 px-4 text-[13px] font-semibold rounded-xl text-white transition-all disabled:opacity-70"
-          style={{ background: exportando ? '#64748b' : '#2a7a8a', boxShadow: '0 2px 8px rgba(42,122,138,0.25)' }}
-        >
+          style={{ background: exportando ? '#64748b' : '#7c3aed', boxShadow: '0 2px 8px rgba(124,58,237,0.25)' }}>
           {exportando
             ? <><Loader2 size={14} className="animate-spin" /> Gerando PDF...</>
             : <><Download size={14} /> Exportar PDF</>
           }
         </button>
-      }
-    >
+      }>
       <div className="space-y-5">
 
-        {/* Cabecalho visual */}
+        {/* Cabecalho */}
         <div className="rounded-2xl border px-6 py-5 flex items-center justify-between"
           style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-default)' }}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#2a7a8a' }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#7c3aed' }}>
               <BarChart2 size={18} className="text-white" />
             </div>
             <div>
               <p className="font-display font-bold text-[16px]" style={{ color: 'var(--text-primary)' }}>
-                Relatório de Desempenho
+                Relatório do Gerente
               </p>
               <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Gerado em {dataAtual}</p>
             </div>
           </div>
           <div className="text-right hidden sm:block">
-            <p className="font-display font-bold text-[22px]" style={{ color: '#2a7a8a' }}>DailyTasks</p>
+            <p className="font-display font-bold text-[22px]" style={{ color: '#7c3aed' }}>DailyTasks</p>
             <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Plataforma de gestão</p>
           </div>
         </div>
@@ -285,7 +227,7 @@ export function GestorRelatorios() {
           <StatCard label="Total de tarefas" value={total}
             icon={<CheckSquare size={16} className="text-brand-teal" />}
             accentColor="bg-brand-teal" iconBg="bg-brand-teal-subtle" delay="0.05s" />
-          <StatCard label="Concluidas" value={concluidas}
+          <StatCard label="Concluídas" value={concluidas}
             sub={total > 0 ? '<strong>' + Math.round(concluidas / total * 100) + '%</strong> do total' : ''}
             icon={<CheckSquare size={16} className="text-emerald-600" />}
             accentColor="bg-emerald-500" iconBg="bg-emerald-50" delay="0.10s" />
@@ -298,6 +240,7 @@ export function GestorRelatorios() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Distribuição */}
           <Card delay="0.25s">
             <CardHeader>
               <CardTitle>Distribuição por status</CardTitle>
@@ -322,6 +265,7 @@ export function GestorRelatorios() {
             </div>
           </Card>
 
+          {/* Progresso por projeto */}
           <Card delay="0.30s">
             <CardHeader>
               <CardTitle>Progresso por projeto</CardTitle>
@@ -334,16 +278,16 @@ export function GestorRelatorios() {
                 <div key={p.id} className="px-5 py-3.5">
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="flex items-center gap-2">
-                      <FolderKanban size={13} className="text-brand-teal flex-shrink-0" />
+                      <FolderKanban size={13} style={{ color: '#7c3aed' }} className="flex-shrink-0" />
                       <span className="text-[13px] font-medium truncate max-w-[180px]"
                         style={{ color: 'var(--text-primary)' }}>{p.nome}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{p.feitas}/{p.total}</span>
-                      <span className="text-[12px] font-bold" style={{ color: 'var(--text-primary)' }}>{p.pct}%</span>
+                      <span className="text-[12px] font-bold" style={{ color: '#7c3aed' }}>{p.pct}%</span>
                     </div>
                   </div>
-                  <ProgressBar pct={p.pct} />
+                  <ProgressBar pct={p.pct} color="#7c3aed" />
                   {p.atrasadas > 0 && (
                     <p className="text-[11px] mt-1 text-rose-500 flex items-center gap-1">
                       <AlertTriangle size={10} />
@@ -355,76 +299,6 @@ export function GestorRelatorios() {
             </div>
           </Card>
         </div>
-
-        <Card delay="0.35s">
-          <CardHeader>
-            <div>
-              <CardTitle>Desempenho da equipe</CardTitle>
-              <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Ordenado por tarefas concluidas</p>
-            </div>
-            <Users size={16} className="text-brand-teal" />
-          </CardHeader>
-          {rankingFunc.length === 0 ? (
-            <div className="p-6 text-center">
-              <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Nenhuma tarefa atribuida ainda</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border-default)' }}>
-                    {['#', 'Funcionario', 'Total', 'Concluidas', 'Em andamento', 'Atrasadas', 'Taxa'].map(h => (
-                      <th key={h} className="text-left px-5 pb-3 pt-2 text-[11px] font-bold uppercase tracking-wider"
-                        style={{ color: 'var(--text-muted)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rankingFunc.map((f, i) => {
-                    const taxa = f.total > 0 ? Math.round(f.feitas / f.total * 100) : 0
-                    return (
-                      <tr key={f.id} className="transition-colors hover:bg-slate-50/50"
-                        style={{ borderBottom: i < rankingFunc.length - 1 ? '1px solid var(--border-default)' : 'none' }}>
-                        <td className="px-5 py-3">
-                          <span
-                            className={'text-[12px] font-bold ' + (i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-orange-600' : '')}
-                            style={i > 2 ? { color: 'var(--text-muted)' } : undefined}>
-                            {i === 0 ? '1o' : i === 1 ? '2o' : i === 2 ? '3o' : '#' + (i + 1)}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <Avatar name={f.nomeCompleto} foto={f.foto} size="sm" />
-                            <div>
-                              <p className="text-[13px] font-medium" style={{ color: 'var(--text-primary)' }}>{f.nomeCompleto}</p>
-                              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{f.role}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>{f.total}</td>
-                        <td className="px-5 py-3"><span className="text-[12px] font-semibold text-emerald-600">{f.feitas}</span></td>
-                        <td className="px-5 py-3"><span className="text-[12px] font-semibold text-blue-600">{f.emAndamento}</span></td>
-                        <td className="px-5 py-3">
-                          <span className={'text-[12px] font-semibold ' + (f.atrasadasF > 0 ? 'text-rose-600' : 'text-slate-400')}>
-                            {f.atrasadasF}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-16">
-                              <ProgressBar pct={taxa} color={taxa >= 70 ? '#22c55e' : taxa >= 40 ? '#f59e0b' : '#ef4444'} />
-                            </div>
-                            <span className="text-[12px] font-bold" style={{ color: 'var(--text-primary)' }}>{taxa}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
 
       </div>
     </DashboardLayout>

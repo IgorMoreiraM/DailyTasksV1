@@ -20,10 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Controller para gestão de Projetos com Multi-tenancy.
- * Implementa a Solução 2: Retorno de Map customizado para evitar erros de Lazy Loading no JSON.
- */
 @RestController
 @RequestMapping("/projetos")
 public class ProjetoController {
@@ -42,6 +38,8 @@ public class ProjetoController {
 
     /**
      * Listagem com isolamento por empresa.
+     * GESTOR     → todos os projetos da empresa
+     * GERENTE/FUNCIONARIO → projetos como membro OU com tarefas atribuídas
      */
     @GetMapping
     public ResponseEntity<List<Projeto>> listarProjetos(Authentication authentication) {
@@ -59,15 +57,30 @@ public class ProjetoController {
             return ResponseEntity.ok(repository.findByEmpresaId(logado.getEmpresa().getId()));
         }
 
-        List<ProjetoMembro> vinculos = projetoMembroRepository.findByFuncionarioId(logado.getId());
-        return ResponseEntity.ok(vinculos.stream()
+        // GERENTE e FUNCIONARIO
+        Long funcId    = logado.getId();
+        Long empresaId = logado.getEmpresa().getId();
+
+        // 1. Projetos onde é membro explícito
+        List<Projeto> comoMembro = projetoMembroRepository.findByFuncionarioId(funcId)
+                .stream()
                 .map(ProjetoMembro::getProjeto)
-                .filter(p -> p.getEmpresa() != null && p.getEmpresa().getId().equals(logado.getEmpresa().getId()))
-                .collect(Collectors.toList()));
+                .filter(p -> p.getEmpresa() != null && p.getEmpresa().getId().equals(empresaId))
+                .collect(Collectors.toList());
+
+        // 2. Projetos onde tem tarefas atribuídas
+        List<Projeto> comTarefas = repository.findByFuncionarioAtribuidoIdAndEmpresaId(funcId, empresaId);
+
+        // 3. Une sem duplicatas usando Map por ID
+        Map<Long, Projeto> projetosMap = new HashMap<>();
+        comoMembro.forEach(p -> projetosMap.put(p.getId(), p));
+        comTarefas.forEach(p -> projetosMap.put(p.getId(), p));
+
+        return ResponseEntity.ok(List.copyOf(projetosMap.values()));
     }
 
     /**
-     * Busca por ID com trava de segurança.
+     * Busca por ID com trava de segurança por empresa.
      */
     @GetMapping("/{id}")
     public ResponseEntity<?> buscarPorId(@PathVariable Long id, Authentication auth) {
@@ -75,7 +88,8 @@ public class ProjetoController {
 
         return repository.findById(id).map(projeto -> {
             if (logado.getRole() != UserRole.MASTER &&
-                    (projeto.getEmpresa() == null || !projeto.getEmpresa().getId().equals(logado.getEmpresa().getId()))) {
+                    (projeto.getEmpresa() == null ||
+                            !projeto.getEmpresa().getId().equals(logado.getEmpresa().getId()))) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Acesso negado.");
             }
             return ResponseEntity.ok(projeto);
@@ -83,7 +97,7 @@ public class ProjetoController {
     }
 
     /**
-     * CRIAÇÃO DE PROJETO (Solução 2 aplicada)
+     * Criação de projeto — resposta limpa em Map para evitar referência circular.
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR')")
@@ -111,11 +125,10 @@ public class ProjetoController {
 
             Projeto salvo = repository.save(projeto);
 
-            // --- SOLUÇÃO 2: Resposta limpa em Map ---
             Map<String, Object> response = new HashMap<>();
-            response.put("id", salvo.getId());
-            response.put("nome", salvo.getNome());
-            response.put("descricao", salvo.getDescricao());
+            response.put("id",       salvo.getId());
+            response.put("nome",     salvo.getNome());
+            response.put("descricao",salvo.getDescricao());
             if (salvo.getEmpresa() != null) {
                 response.put("empresaId", salvo.getEmpresa().getId());
             }
@@ -128,15 +141,20 @@ public class ProjetoController {
     }
 
     /**
-     * ATUALIZAÇÃO DE PROJETO (Solução 2 aplicada)
+     * Atualização de projeto.
      */
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR')")
-    public ResponseEntity<?> atualizarProjeto(@PathVariable Long id, @RequestBody Projeto dados, Authentication auth) {
+    public ResponseEntity<?> atualizarProjeto(
+            @PathVariable Long id,
+            @RequestBody Projeto dados,
+            Authentication auth) {
+
         Funcionario logado = (Funcionario) auth.getPrincipal();
 
         return repository.findById(id).map(p -> {
-            if (logado.getRole() != UserRole.MASTER && !p.getEmpresa().getId().equals(logado.getEmpresa().getId())) {
+            if (logado.getRole() != UserRole.MASTER &&
+                    !p.getEmpresa().getId().equals(logado.getEmpresa().getId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Acesso negado.");
             }
             p.setNome(dados.getNome());
@@ -144,14 +162,17 @@ public class ProjetoController {
             Projeto salvo = repository.save(p);
 
             Map<String, Object> response = new HashMap<>();
-            response.put("id", salvo.getId());
-            response.put("nome", salvo.getNome());
+            response.put("id",        salvo.getId());
+            response.put("nome",      salvo.getNome());
             response.put("descricao", salvo.getDescricao());
 
             return ResponseEntity.ok(response);
         }).orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body("Projeto não encontrado."));
     }
 
+    /**
+     * Exclusão de projeto.
+     */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR')")
     public ResponseEntity<?> excluirProjeto(@PathVariable Long id, Authentication auth) {
@@ -159,7 +180,8 @@ public class ProjetoController {
 
         return repository.findById(id).map(p -> {
             if (logado.getRole() != UserRole.MASTER &&
-                    (p.getEmpresa() == null || !p.getEmpresa().getId().equals(logado.getEmpresa().getId()))) {
+                    (p.getEmpresa() == null ||
+                            !p.getEmpresa().getId().equals(logado.getEmpresa().getId()))) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Acesso negado.");
             }
             repository.deleteById(id);
@@ -167,21 +189,30 @@ public class ProjetoController {
         }).orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body("Projeto não encontrado."));
     }
 
+    /**
+     * Adiciona membro ao projeto.
+     */
     @PostMapping("/{id}/membros")
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR')")
-    public ResponseEntity<?> adicionarMembro(@PathVariable Long id, @RequestBody Map<String, Object> payload, Authentication auth) {
+    public ResponseEntity<?> adicionarMembro(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> payload,
+            Authentication auth) {
+
         Funcionario logado = (Funcionario) auth.getPrincipal();
 
         return repository.findById(id).map(projeto -> {
-            if (logado.getRole() != UserRole.MASTER && !projeto.getEmpresa().getId().equals(logado.getEmpresa().getId())) {
+            if (logado.getRole() != UserRole.MASTER &&
+                    !projeto.getEmpresa().getId().equals(logado.getEmpresa().getId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Acesso negado.");
             }
 
-            Long funcId = Long.valueOf(payload.get("funcionarioId").toString());
+            Long   funcId   = Long.valueOf(payload.get("funcionarioId").toString());
             String papelStr = payload.get("papel").toString();
 
             return funcionarioRepository.findById(funcId).map(func -> {
-                if (logado.getRole() != UserRole.MASTER && !func.getEmpresa().getId().equals(logado.getEmpresa().getId())) {
+                if (logado.getRole() != UserRole.MASTER &&
+                        !func.getEmpresa().getId().equals(logado.getEmpresa().getId())) {
                     return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Funcionário de outra empresa.");
                 }
 
@@ -196,6 +227,9 @@ public class ProjetoController {
         }).orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body("Projeto não encontrado."));
     }
 
+    /**
+     * Lista membros de um projeto.
+     */
     @GetMapping("/{id}/membros")
     public ResponseEntity<List<ProjetoMembro>> listarMembros(@PathVariable Long id) {
         return ResponseEntity.ok(projetoMembroRepository.findByProjetoId(id));

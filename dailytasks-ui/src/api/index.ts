@@ -42,14 +42,14 @@ export const empresaApi = {
 }
 
 export const funcionarioApi = {
-  listar:       ()                           => api.get('/funcionarios'),
-  criar:        (data: object)               => api.post('/funcionarios', data),
-  atualizar:    (id: number, data: object)   => api.put(`/funcionarios/${id}`, data),
-  desativar:    (id: number)                 => api.delete(`/funcionarios/${id}`),
-  ativar:       (id: number)                 => api.patch(`/funcionarios/${id}/ativar`),
-  resetSenha:   (id: number)                 => api.patch(`/funcionarios/${id}/reset-senha`),
-  alterarSenha: (novaSenha: string)          => api.patch('/funcionarios/alterar-senha', { novaSenha }),
-  uploadFoto:   (id: number, foto: string)   => api.patch(`/funcionarios/${id}/upload-foto`, { foto }),
+  listar:     ()              => api.get('/funcionarios'),
+  criar:      (data: any)     => api.post('/funcionarios', data),
+  atualizar:  (id: number, data: any) => api.put(`/funcionarios/${id}`, data),
+  deletar:    (id: number)    => api.delete(`/funcionarios/${id}`),
+  uploadFoto: (id: number, foto: string) => api.patch(`/funcionarios/${id}/upload-foto`, { foto }),
+  resetSenha: (id: number)    => api.patch(`/funcionarios/${id}/reset-senha`),
+  ativar:     (id: number)    => api.patch(`/funcionarios/${id}/ativar`),
+  alterarSenha: (data: any)   => api.patch('/funcionarios/alterar-senha', data),
 }
 
 export const projetoApi = {
@@ -71,6 +71,7 @@ export const listaApi = {
 
 export const tarefaApi = {
   listarPorProjeto: (projetoId: number)         => api.get(`/tarefas/projeto/${projetoId}`),
+  listarMinhas: () => api.get('/tarefas/minhas'),
   criar:            (data: object)               => api.post('/tarefas', data),
   atualizar:        (id: number, data: object)   => api.put(`/tarefas/${id}`, data),
   deletar:          (id: number)                 => api.delete(`/tarefas/${id}`),
@@ -79,4 +80,8 @@ export const tarefaApi = {
 export const membroApi = {
   atribuirLider: (projetoId: number, funcionarioId: number) =>
     api.post('/projeto-membros/atribuir-lider', { projetoId, funcionarioId }),
+}
+
+export const botApi = {
+  gerarToken: () => api.post('/bot/gerar-token'),
 }

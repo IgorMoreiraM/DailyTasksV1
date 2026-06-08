@@ -1,0 +1,11 @@
+# Credenciais
+.env
+sessions.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/

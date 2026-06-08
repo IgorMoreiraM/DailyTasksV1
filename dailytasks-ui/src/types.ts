@@ -52,6 +52,7 @@ export interface Tarefa {
   funcionarioId: number
   nomeFuncionario: string
   empresaId?: number
+  username?: string
 }
 
 export interface ProjetoMembro {

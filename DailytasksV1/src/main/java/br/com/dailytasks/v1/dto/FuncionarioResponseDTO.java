@@ -4,18 +4,27 @@ import br.com.dailytasks.v1.model.Funcionario;
 import br.com.dailytasks.v1.model.UserRole;
 
 public record FuncionarioResponseDTO(
-        Long id,
-        String username,
-        String nomeCompleto,
-        UserRole role
+        Long    id,
+        String  username,
+        String  nomeCompleto,
+        UserRole role,
+        String  foto,
+        boolean ativo,
+        boolean senhaTemporaria,
+        Long    empresaId,
+        String  empresaNome
 ) {
-    // Construtor auxiliar para converter a Entidade Funcionario em DTO
-    public FuncionarioResponseDTO(Funcionario funcionario) {
+    public FuncionarioResponseDTO(Funcionario f) {
         this(
-                funcionario.getId(),
-                funcionario.getUsername(),
-                funcionario.getNomeCompleto(),
-                funcionario.getRole()
+                f.getId(),
+                f.getUsername(),
+                f.getNomeCompleto(),
+                f.getRole(),
+                f.getFoto(),
+                f.isAtivo(),
+                f.isSenhaTemporaria(),
+                f.getEmpresa() != null ? f.getEmpresa().getId()   : null,
+                f.getEmpresa() != null ? f.getEmpresa().getNome() : null
         );
     }
 }

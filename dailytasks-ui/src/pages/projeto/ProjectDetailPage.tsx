@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Plus, Trash2, CheckCircle2, Calendar, MoreHorizontal, AlertCircle } from 'lucide-react'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
-import { Btn, Modal, FormField, Avatar, EmptyState, Spinner, StatusBadge,
+import { Btn, Modal, FormField, Avatar, Spinner, StatusBadge,
          ProgressBar, inputClass, inputStyle } from '../../components/ui'
 import { projetoApi, listaApi, tarefaApi, funcionarioApi } from '../../api'
 import type { Projeto, Lista, Tarefa, Funcionario, TaskStatus } from '../../types'
@@ -46,11 +46,11 @@ export function ProjectDetailPage() {
   const [erroT,       setErroT]       = useState('')
 
   /* Modal editar */
-  const [modalEditar,     setModalEditar]     = useState(false)
-  const [tarefaEditando,  setTarefaEditando]  = useState<Tarefa | null>(null)
-  const [fEditar,         setFEditar]         = useState({ titulo: '', descricao: '', dataDeVencimento: '', funcionarioId: '', listaId: '' })
-  const [savingE,         setSavingE]         = useState(false)
-  const [erroE,           setErroE]           = useState('')
+  const [modalEditar,    setModalEditar]    = useState(false)
+  const [tarefaEditando, setTarefaEditando] = useState<Tarefa | null>(null)
+  const [fEditar,        setFEditar]        = useState({ titulo: '', descricao: '', dataDeVencimento: '', funcionarioId: '', listaId: '' })
+  const [savingE,        setSavingE]        = useState(false)
+  const [erroE,          setErroE]          = useState('')
 
   const [filtro, setFiltro] = useState<'todas' | 'minhas' | 'hoje'>('todas')
 
@@ -58,17 +58,23 @@ export function ProjectDetailPage() {
     if (!id) return
     setLoading(true)
     try {
-      const [rP, rL, rT, rF] = await Promise.all([
+      const [rP, rL, rT] = await Promise.all([
         projetoApi.detalhar(Number(id)),
         listaApi.listarPorProjeto(Number(id)),
         tarefaApi.listarPorProjeto(Number(id)),
-        funcionarioApi.listar(),
       ])
       setProjeto(rP.data)
       const listasRaw = Array.isArray(rL.data) ? rL.data : []
       setListas(listasRaw.map((l: any) => ({ id: Number(l.id), nome: String(l.nome) })))
       setTarefas(Array.isArray(rT.data) ? rT.data : [])
-      setFuncionarios(Array.isArray(rF.data) ? rF.data : [])
+
+      // Busca funcionários separado — gerente/funcionário pode ter 403
+      try {
+        const rF = await funcionarioApi.listar()
+        setFuncionarios(Array.isArray(rF.data) ? rF.data : [])
+      } catch {
+        setFuncionarios([])
+      }
     } catch (err) {
       console.error('Erro ProjectDetailPage:', err)
     } finally {
@@ -149,9 +155,9 @@ export function ProjectDetailPage() {
     setErroE(''); setSavingE(true)
     try {
       const payload: any = {
-        titulo:        fEditar.titulo.trim(),
-        funcionarioId: Number(fEditar.funcionarioId),
-        listaId:       fEditar.listaId ? Number(fEditar.listaId) : null,
+        titulo:           fEditar.titulo.trim(),
+        funcionarioId:    Number(fEditar.funcionarioId),
+        listaId:          fEditar.listaId ? Number(fEditar.listaId) : null,
         dataDeVencimento: fEditar.dataDeVencimento || null,
       }
       if (fEditar.descricao.trim()) payload.descricao = fEditar.descricao.trim()
@@ -180,13 +186,17 @@ export function ProjectDetailPage() {
 
   const hoje = new Date().toISOString().split('T')[0]
   const tarefasFiltradas = tarefas.filter(t => {
-    if (filtro === 'minhas') return t.nomeFuncionario?.toLowerCase().includes((username ?? '').toLowerCase())
+    if (filtro === 'minhas') return t.username === username
     if (filtro === 'hoje')   return t.dataDeVencimento === hoje
     return true
   })
 
   const pct = tarefas.length
     ? Math.round(tarefas.filter(t => t.status === 'CONCLUIDA').length / tarefas.length * 100) : 0
+
+  const fotoMap = Object.fromEntries(
+    funcionarios.map(f => [f.username, f.foto ?? null])
+  )
 
   const actions = (
     <div className="flex items-center gap-2">
@@ -277,7 +287,6 @@ export function ProjectDetailPage() {
             const cols = tarefasFiltradas.filter(t => t.listaId === lista.id)
             return (
               <div key={lista.id} className="min-w-[290px] max-w-[290px] flex-shrink-0 flex flex-col gap-2.5 group/col">
-                {/* Cabeçalho da coluna */}
                 <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-4 rounded-full" style={{ background: '#2a7a8a' }}/>
@@ -307,14 +316,17 @@ export function ProjectDetailPage() {
                   </div>
                 </div>
 
-                {/* Cards */}
                 <div className="rounded-xl border p-2 flex flex-col gap-2 min-h-[200px]"
                   style={{ background: 'var(--bg-subtle)', borderColor: 'var(--border-default)' }}>
                   {cols.map(t => (
-                    <KanbanCard key={t.id} tarefa={t} podeGerenciar={podeGerenciar}
+                    <KanbanCard
+                      key={t.id}
+                      tarefa={t}
+                      podeGerenciar={podeGerenciar}
                       onStatusChange={alterarStatus}
                       onDelete={deletarTarefa}
                       onEditar={abrirEditar}
+                      fotoFuncionario={fotoMap[t.username ?? ''] ?? null}
                     />
                   ))}
                   {podeGerenciar && (
@@ -455,12 +467,13 @@ export function ProjectDetailPage() {
 }
 
 /* ── Kanban Card ── */
-function KanbanCard({ tarefa, podeGerenciar, onStatusChange, onDelete, onEditar }: {
+function KanbanCard({ tarefa, podeGerenciar, onStatusChange, onDelete, onEditar, fotoFuncionario }: {
   tarefa: Tarefa
   podeGerenciar: boolean
   onStatusChange: (t: Tarefa, s: TaskStatus) => void
   onDelete:  (id: number) => void
   onEditar:  (t: Tarefa) => void
+  fotoFuncionario?: string | null
 }) {
   const [open, setOpen]       = useState(false)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
@@ -498,7 +511,6 @@ function KanbanCard({ tarefa, podeGerenciar, onStatusChange, onDelete, onEditar 
       >
         <div className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full ${barColor[tarefa.status]}`} />
 
-        {/* Título */}
         <p className={`text-[13px] font-semibold mb-1.5 pl-2 pr-6 ${tarefa.status === 'CONCLUIDA' ? 'line-through' : ''}`}
           style={{ color: 'var(--text-primary)' }}>
           {tarefa.titulo}
@@ -510,15 +522,13 @@ function KanbanCard({ tarefa, podeGerenciar, onStatusChange, onDelete, onEditar 
           </p>
         )}
 
-        {/* Status badge */}
         <div className="pl-2 mb-2">
           <StatusBadge status={tarefa.status} />
         </div>
 
-        {/* Rodapé */}
         <div className="flex items-center justify-between pl-2">
           <div className="flex items-center gap-1.5">
-            <Avatar name={tarefa.nomeFuncionario} size="sm"/>
+            <Avatar name={tarefa.nomeFuncionario ?? '?'} foto={fotoFuncionario} size="sm"/>
             <span className="text-[10.5px] truncate max-w-[80px]" style={{ color: 'var(--text-muted)' }}>
               {tarefa.nomeFuncionario?.split(' ')[0]}
             </span>
@@ -535,7 +545,6 @@ function KanbanCard({ tarefa, podeGerenciar, onStatusChange, onDelete, onEditar 
           </div>
         </div>
 
-        {/* Botão menu */}
         <div className="absolute top-2 right-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
           <button ref={btnRef} onClick={handleOpenMenu}
             className="p-1 rounded hover:bg-slate-100 transition-colors"
@@ -545,7 +554,6 @@ function KanbanCard({ tarefa, podeGerenciar, onStatusChange, onDelete, onEditar 
         </div>
       </div>
 
-      {/* Menu via portal */}
       {open && typeof document !== 'undefined' && createPortal(
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />

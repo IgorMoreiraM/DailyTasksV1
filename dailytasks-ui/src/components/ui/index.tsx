@@ -26,7 +26,6 @@ export function StatCard({
       style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-default)', animationDelay: delay }}
     >
       <div className={`absolute top-0 left-0 right-0 h-[3px] rounded-t-2xl ${accentColor}`} />
-
       <div className="flex items-start justify-between mb-3">
         <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${iconBg}`}>
           {icon}
@@ -39,7 +38,6 @@ export function StatCard({
           </span>
         )}
       </div>
-
       <p className="font-display font-extrabold text-[30px] leading-none tracking-tight mb-1"
         style={{ color: 'var(--text-primary)' }}>
         {value}
@@ -82,6 +80,7 @@ interface AvatarProps {
   color?: string
   size?: 'sm' | 'md' | 'lg'
   foto?: string | null
+  username?: string
 }
 
 const AVATAR_COLORS = [
@@ -89,23 +88,26 @@ const AVATAR_COLORS = [
   '#dc2626', '#0ea5e9', '#d97706', '#e11d48',
 ]
 
-export function Avatar({ name, color, size = 'md', foto }: AvatarProps) {
-  const initials = name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
-  const bg = color ?? AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length]
+export function Avatar({ name, color, size = 'md', foto, username }: AvatarProps) {
+  const initials = name?.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() ?? '?'
+  const bg = color ?? AVATAR_COLORS[(name?.charCodeAt(0) ?? 0) % AVATAR_COLORS.length]
   const sizeClass = {
     sm: 'w-7 h-7 text-[9px]',
     md: 'w-9 h-9 text-[11px]',
     lg: 'w-11 h-11 text-[13px]',
   }[size]
 
-  if (foto) return (
-    <img src={foto} alt={name} className={`${sizeClass} rounded-full object-cover flex-shrink-0`} />
+  const fotoLocal = username ? localStorage.getItem(`dt_foto_${username}`) : null
+  const fotoFinal = foto || fotoLocal || null
+
+  if (fotoFinal) return (
+    <img src={fotoFinal} alt={name} className={`${sizeClass} rounded-full object-cover flex-shrink-0`} />
   )
 
   return (
     <div
-      className={`${sizeClass} rounded-full flex items-center justify-center font-display font-bold text-white flex-shrink-0`}
-      style={{ background: bg }}
+      className={`${sizeClass} rounded-full flex items-center justify-center font-display font-bold flex-shrink-0`}
+      style={{ background: bg, color: '#ffffff' }}
     >
       {initials}
     </div>
@@ -120,23 +122,41 @@ interface BtnProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: React.ReactNode
 }
 
-const BTN_VARIANT: Record<string, string> = {
-  primary:   'bg-brand-teal text-white hover:bg-brand-teal-dark shadow-sm shadow-brand-teal/20',
-  secondary: 'border hover:opacity-80',
-  ghost:     'text-brand-teal hover:bg-brand-teal-subtle',
-  danger:    'bg-rose-600 text-white hover:bg-rose-700',
-}
-
-const BTN_SIZE: Record<string, string> = {
-  sm: 'h-8 px-3 text-xs gap-1.5',
-  md: 'h-9 px-4 text-sm gap-2',
-}
-
 export function Btn({
   variant = 'primary', size = 'md', loading,
-  icon, children, className = '', ...props
+  icon, children, className = '', style, ...props
 }: BtnProps) {
-  const isSecondary = variant === 'secondary'
+  const sizeClass = size === 'sm'
+    ? 'h-8 px-3 text-xs gap-1.5'
+    : 'h-9 px-4 text-sm gap-2'
+
+  // Estilos por variante via style inline para evitar conflito com variáveis CSS
+  const variantStyle = (() => {
+    switch (variant) {
+      case 'primary':
+        return {
+          background:  'var(--brand-teal, #2a7a8a)',
+          color:       '#ffffff',
+          boxShadow:   '0 1px 3px rgba(42,122,138,0.2)',
+        }
+      case 'secondary':
+        return {
+          background:  'var(--bg-subtle)',
+          border:      '1px solid var(--border-strong)',
+          color:       'var(--text-primary)',
+        }
+      case 'ghost':
+        return {
+          background:  'transparent',
+          color:       'var(--brand-teal, #2a7a8a)',
+        }
+      case 'danger':
+        return {
+          background:  '#dc2626',
+          color:       '#ffffff',
+        }
+    }
+  })()
 
   return (
     <button
@@ -144,19 +164,12 @@ export function Btn({
       disabled={loading || props.disabled}
       className={`
         inline-flex items-center justify-center font-semibold rounded-xl transition-all
-        ${BTN_VARIANT[variant]} ${BTN_SIZE[size]}
+        ${sizeClass}
         disabled:opacity-50 disabled:cursor-not-allowed
+        hover:opacity-90
         ${className}
       `}
-      style={
-        isSecondary
-          ? {
-              background:  'var(--bg-subtle)',
-              borderColor: 'var(--border-strong)',
-              color:       'var(--text-primary)',
-            }
-          : undefined
-      }
+      style={{ ...variantStyle, ...style }}
     >
       {loading
         ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -178,8 +191,8 @@ export function Card({ children, className = '', delay }: CardProps) {
     <div
       className={`rounded-2xl border overflow-hidden animate-slide-up ${className}`}
       style={{
-        background: 'var(--bg-surface)',
-        borderColor: 'var(--border-default)',
+        background:     'var(--bg-surface)',
+        borderColor:    'var(--border-default)',
         animationDelay: delay,
       }}
     >
@@ -234,8 +247,10 @@ export function Modal({ open, onClose, title, children, width = 'max-w-md' }: Mo
           </h3>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-lg transition-all hover:bg-slate-100"
-            style={{ color: 'var(--text-muted)' }}
+            className="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
+            style={{ color: 'var(--text-muted)', background: 'transparent' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
             <X size={14} />
           </button>
@@ -265,16 +280,16 @@ export function FormField({ label, children, error }: FormFieldProps) {
   )
 }
 
-/* ── inputClass e inputStyle (usados nos formulários) ── */
+/* ── inputClass e inputStyle ── */
 export const inputClass = `
   w-full h-10 px-3.5 rounded-xl border text-[13.5px] outline-none transition-all
-  focus:border-brand-teal focus:shadow-[0_0_0_3px_rgba(42,122,138,0.12)]
+  focus:shadow-[0_0_0_3px_rgba(42,122,138,0.12)]
 `
 
 export const inputStyle = {
-  background: 'var(--bg-input, var(--bg-surface))',
+  background:  'var(--bg-subtle)',
   borderColor: 'var(--border-default)',
-  color: 'var(--text-primary)',
+  color:       'var(--text-primary)',
 } as React.CSSProperties
 
 /* ── EmptyState ── */
@@ -290,7 +305,7 @@ export function EmptyState({
       className="flex flex-col items-center justify-center py-16 rounded-2xl border-2 border-dashed"
       style={{ borderColor: 'var(--border-default)' }}
     >
-      <div className="text-slate-300 mb-3">{icon}</div>
+      <div className="mb-3" style={{ color: 'var(--border-strong)' }}>{icon}</div>
       <p className="text-[13px] font-semibold" style={{ color: 'var(--text-muted)' }}>{message}</p>
       {sub && (
         <p className="text-[11.5px] mt-1" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>{sub}</p>
@@ -305,9 +320,9 @@ export function Spinner({ size = 20 }: { size?: number }) {
     <div
       className="rounded-full border-2 animate-spin"
       style={{
-        width: size,
-        height: size,
-        borderColor: 'var(--border-default)',
+        width:          size,
+        height:         size,
+        borderColor:    'var(--border-default)',
         borderTopColor: '#2a7a8a',
       }}
     />

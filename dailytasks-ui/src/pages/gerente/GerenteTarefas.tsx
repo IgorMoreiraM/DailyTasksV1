@@ -23,24 +23,13 @@ export function GerenteTarefas() {
   const [updating, setUpdating] = useState<number | null>(null)
 
   const fetchAll = useCallback(async () => {
-    setLoading(true)
-    try {
-      const rP = await projetoApi.listar()
-      const reqs = await Promise.allSettled(rP.data.map((p: Projeto) => tarefaApi.listarPorProjeto(p.id)))
-      const minhas: Tarefa[] = []
-      reqs.forEach(r => {
-        if (r.status === 'fulfilled') {
-          r.value.data.forEach((t: Tarefa) => {
-            if (t.nomeFuncionario?.toLowerCase().includes((username ?? '').toLowerCase())) {
-              minhas.push(t)
-            }
-          })
-        }
-      })
-      setTarefas(minhas)
-    } catch (err) { console.error(err) }
-    finally { setLoading(false) }
-  }, [username])
+  setLoading(true)
+  try {
+    const rT = await tarefaApi.listarMinhas()
+    setTarefas(Array.isArray(rT.data) ? rT.data : [])
+  } catch (err) { console.error(err) }
+  finally { setLoading(false) }
+}, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 

@@ -25,6 +25,15 @@ public class TarefaController {
     @Autowired private ProjetoRepository projetoRepository;
     @Autowired private ProjetoMembroRepository projetoMembroRepository;
 
+    @GetMapping("/minhas")
+    public ResponseEntity<List<?>> minhasTarefas(Authentication auth) {
+        Funcionario logado = (Funcionario) auth.getPrincipal();
+        List<Tarefa> tarefas = tarefaRepository.findByFuncionarioAtribuidoId(logado.getId());
+        return ResponseEntity.ok(tarefas.stream()
+                .map(TarefaResponseDTO::new)
+                .collect(Collectors.toList()));
+    }
+
     @GetMapping("/projeto/{id}")
     public ResponseEntity<?> listarPorProjeto(@PathVariable Long id, Authentication auth) {
         Funcionario logado = (Funcionario) auth.getPrincipal();
@@ -34,12 +43,10 @@ public class TarefaController {
 
         Projeto projeto = projetoOpt.get();
 
-        // MASTER acessa tudo, outros verificam empresa via repositório
         if (logado.getRole() != UserRole.MASTER) {
             if (logado.getEmpresa() == null) {
                 return ResponseEntity.status(403).body("Usuário sem empresa vinculada.");
             }
-            // Busca o projeto com empresa carregada diretamente pelo repositório
             boolean mesmaEmpresa = projetoRepository.existsByIdAndEmpresaId(id, logado.getEmpresa().getId());
             if (!mesmaEmpresa) {
                 return ResponseEntity.status(403).body("Acesso negado a este projeto.");
@@ -53,19 +60,12 @@ public class TarefaController {
     @PostMapping
     @PreAuthorize("hasAnyRole('MASTER', 'GESTOR', 'GERENTE')")
     public ResponseEntity<?> criarTarefa(@RequestBody TarefaCreateDTO data, Authentication auth) {
-        System.out.println(">>> CRIAR TAREFA: chegou no controller");
-        System.out.println(">>> AUTH: " + (auth != null ? auth.getName() : "NULL"));
-        System.out.println(">>> AUTHORITIES: " + (auth != null ? auth.getAuthorities() : "NULL"));
-        System.out.println(">>> DATA: " + data);
-
         Funcionario logado = (Funcionario) auth.getPrincipal();
-        System.out.println(">>> EMPRESA DO LOGADO: " + (logado.getEmpresa() != null ? logado.getEmpresa().getId() : "NULL"));
 
         Optional<Projeto> projetoOpt = projetoRepository.findById(data.projetoId());
         if (projetoOpt.isEmpty()) return ResponseEntity.status(404).body("Projeto não encontrado.");
         Projeto projeto = projetoOpt.get();
 
-        // Verificação de empresa via repositório (não depende de lazy loading)
         if (logado.getRole() != UserRole.MASTER) {
             if (logado.getEmpresa() == null) {
                 return ResponseEntity.status(403).body("Usuário sem empresa vinculada.");
@@ -78,12 +78,17 @@ public class TarefaController {
             }
         }
 
-        // Gerente precisa ser membro do projeto
+        // Gerente precisa ser membro do projeto OU ter tarefa atribuída (via ProjetoRepository)
         if (logado.getRole() == UserRole.GERENTE) {
             boolean ehMembro = projetoMembroRepository.existsByProjetoIdAndFuncionarioId(
                     data.projetoId(), logado.getId()
             );
-            if (!ehMembro) {
+            boolean temTarefa = !tarefaRepository.findByFuncionarioAtribuidoId(logado.getId())
+                    .stream()
+                    .filter(t -> t.getProjeto().getId().equals(data.projetoId()))
+                    .toList()
+                    .isEmpty();
+            if (!ehMembro && !temTarefa) {
                 return ResponseEntity.status(403).body("Gerente não é membro deste projeto.");
             }
         }
@@ -120,7 +125,6 @@ public class TarefaController {
         Tarefa tarefa = tarefaOpt.get();
         Funcionario logado = (Funcionario) auth.getPrincipal();
 
-        // Verifica empresa via repositório
         if (logado.getRole() != UserRole.MASTER) {
             if (logado.getEmpresa() == null ||
                     tarefa.getEmpresa() == null ||
@@ -165,6 +169,14 @@ public class TarefaController {
                     listaRepository.findById(listaId).ifPresent(tarefa::setListaTarefa);
                 }
             }
+            if (payload.containsKey("dataDeVencimento")) {
+                Object prazoObj = payload.get("dataDeVencimento");
+                if (prazoObj == null) {
+                    tarefa.setDataDeVencimento(null);
+                } else {
+                    tarefa.setDataDeVencimento(java.time.LocalDate.parse(prazoObj.toString()));
+                }
+            }
         }
 
         return ResponseEntity.ok(new TarefaResponseDTO(tarefaRepository.save(tarefa)));
@@ -197,4 +209,4 @@ public class TarefaController {
         tarefaRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
-};
+}

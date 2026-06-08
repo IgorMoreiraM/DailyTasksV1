@@ -1,16 +1,18 @@
 """
 Session Store — armazena tokens JWT por Telegram User ID.
-Usa arquivo JSON para persistir entre reinicializações.
+Persiste em JSON e registra horário de criação para expiração.
 """
 
 import json
 import logging
 from pathlib import Path
+from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 SESSIONS_FILE = Path("sessions.json")
+DATE_FORMAT   = "%Y-%m-%dT%H:%M:%S"
 
 
 class SessionStore:
@@ -38,11 +40,12 @@ class SessionStore:
 
     def salvar(self, telegram_id: int, token: str, info: dict):
         self._data[str(telegram_id)] = {
-            "token": token,
-            "info":  info,
+            "token":     token,
+            "info":      info,
+            "criada_em": datetime.now().strftime(DATE_FORMAT),
         }
         self._salvar()
-        logger.info(f"Sessão salva para Telegram ID {telegram_id} ({info.get('username')})")
+        logger.info(f"Sessão salva: Telegram ID {telegram_id} ({info.get('username')})")
 
     def tem_sessao(self, telegram_id: int) -> bool:
         return str(telegram_id) in self._data
@@ -55,8 +58,22 @@ class SessionStore:
         entrada = self._data.get(str(telegram_id))
         return entrada["info"] if entrada else None
 
+    def get_criada_em(self, telegram_id: int) -> Optional[datetime]:
+        entrada = self._data.get(str(telegram_id))
+        if not entrada:
+            return None
+        criada_str = entrada.get("criada_em")
+        if not criada_str:
+            # Sessão antiga sem timestamp — considera expirada
+            return None
+        try:
+            return datetime.strptime(criada_str, DATE_FORMAT)
+        except Exception:
+            return None
+
     def remover(self, telegram_id: int):
-        if str(telegram_id) in self._data:
-            del self._data[str(telegram_id)]
+        key = str(telegram_id)
+        if key in self._data:
+            del self._data[key]
             self._salvar()
-            logger.info(f"Sessão removida para Telegram ID {telegram_id}")
+            logger.info(f"Sessão removida: Telegram ID {telegram_id}")

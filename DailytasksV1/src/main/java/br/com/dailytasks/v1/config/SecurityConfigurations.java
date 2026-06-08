@@ -17,10 +17,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/**
- * Configuração de segurança definitiva.
- * A ordem dos requestMatchers é CRÍTICA: as regras mais específicas devem vir antes das genéricas.
- */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfigurations {
@@ -41,40 +37,35 @@ public class SecurityConfigurations {
                         .requestMatchers(HttpMethod.POST, "/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/health-check").permitAll()
 
-                        // --- 1. EXCLUSIVO MASTER ---
+                        // --- 1. BOT TELEGRAM ---
+                        // Validar token não precisa de JWT (é o mecanismo de login do bot)
+                        .requestMatchers(HttpMethod.POST, "/bot/validar-token").permitAll()
+                        // Gerar token requer usuário autenticado
+                        .requestMatchers(HttpMethod.POST, "/bot/gerar-token").authenticated()
+
+                        // --- 2. EXCLUSIVO MASTER ---
                         .requestMatchers("/empresas", "/empresas/**").hasRole("MASTER")
 
-                        // --- 2. GESTÃO DE PESSOAS (/funcionarios) ---
-                        // Permite alteração de senha própria para qualquer nível logado
+                        // --- 3. GESTÃO DE PESSOAS (/funcionarios) ---
                         .requestMatchers(HttpMethod.PATCH, "/funcionarios/alterar-senha").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/funcionarios/*/upload-foto").authenticated()
-
-                        // Gestão administrativa (Criar/Deletar/Listar todos)
                         .requestMatchers("/funcionarios", "/funcionarios/**").hasAnyRole("MASTER", "GESTOR")
 
-                        // --- 3. GESTÃO DE PROJETOS E ESTRUTURA (/projetos e /listas) ---
-
-                        // Escrita (POST, PUT, DELETE): Apenas Master e Gestor
-                        // Usamos a vírgula para cobrir tanto "/projetos" quanto "/projetos/..."
+                        // --- 4. GESTÃO DE PROJETOS E ESTRUTURA (/projetos e /listas) ---
                         .requestMatchers(HttpMethod.POST, "/projetos/**", "/projetos", "/listas/**", "/listas").hasAnyRole("MASTER", "GESTOR")
                         .requestMatchers(HttpMethod.PUT, "/projetos/**", "/listas/**").hasAnyRole("MASTER", "GESTOR")
                         .requestMatchers(HttpMethod.DELETE, "/projetos/**", "/listas/**").hasAnyRole("MASTER", "GESTOR")
-
-                        // Leitura (GET): Qualquer um logado (o isolamento de dados ocorre no Controller)
                         .requestMatchers(HttpMethod.GET, "/projetos/**", "/projetos", "/listas/**", "/listas").authenticated()
 
-                        // --- 4. OPERAÇÃO DE TAREFAS (/tarefas) ---
-
-                        // Criação e Exclusão: Master, Gestor e Gerente
+                        // --- 5. OPERAÇÃO DE TAREFAS (/tarefas) ---
                         .requestMatchers(HttpMethod.POST, "/tarefas/**", "/tarefas").hasAnyRole("MASTER", "GESTOR", "GERENTE")
                         .requestMatchers(HttpMethod.DELETE, "/tarefas/**").hasAnyRole("MASTER", "GESTOR", "GERENTE")
-
-                        // Leitura e Atualização de Status: Todos os membros da empresa
                         .requestMatchers(HttpMethod.GET, "/tarefas/**", "/tarefas").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/tarefas/**").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/tarefas/**").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/tarefas/minhas").authenticated()
 
-                        // --- 5. SEGURANÇA FINAL ---
+                        // --- 6. SEGURANÇA FINAL ---
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)

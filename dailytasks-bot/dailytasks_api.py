@@ -24,7 +24,35 @@ class DailyTasksAPI:
 
     # ── Autenticação ──────────────────────────────────────────────────────
 
+    def conectar_com_token(self, codigo: str) -> dict:
+        """Valida o token gerado no site e retorna JWT."""
+        try:
+            r = requests.post(
+                f"{self.base_url}/bot/validar-token",
+                json={"token": codigo},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                return {
+                    "ok":    True,
+                    "token": data["token"],
+                    "info":  {
+                        "username":     data["username"],
+                        "nomeCompleto": data["nomeCompleto"],
+                        "role":         data["role"],
+                    },
+                }
+            else:
+                msg = r.text or f"Erro {r.status_code}"
+                return {"ok": False, "erro": msg}
+        except requests.exceptions.ConnectionError:
+            return {"ok": False, "erro": "Não foi possível conectar ao servidor."}
+        except Exception as e:
+            return {"ok": False, "erro": str(e)}
+
     def login(self, username: str, password: str) -> dict:
+        """Login tradicional — mantido para compatibilidade."""
         try:
             r = requests.post(
                 f"{self.base_url}/login",
@@ -33,19 +61,15 @@ class DailyTasksAPI:
             )
             if r.status_code == 200:
                 token = r.json().get("token")
-
-                # Decodifica o JWT para pegar as informações básicas
                 import base64, json as _json
                 payload = token.split(".")[1]
-                payload += "=" * (-len(payload) % 4)  # padding
+                payload += "=" * (-len(payload) % 4)
                 decoded = _json.loads(base64.b64decode(payload))
-
                 authorities = decoded.get("authorities", [])
                 role = "FUNCIONARIO"
-                if "ROLE_MASTER"  in authorities: role = "MASTER"
+                if "ROLE_MASTER"    in authorities: role = "MASTER"
                 elif "ROLE_GESTOR"  in authorities: role = "GESTOR"
                 elif "ROLE_GERENTE" in authorities: role = "GERENTE"
-
                 return {
                     "ok":    True,
                     "token": token,
@@ -60,7 +84,7 @@ class DailyTasksAPI:
             else:
                 return {"ok": False, "erro": f"Erro {r.status_code}"}
         except requests.exceptions.ConnectionError:
-            return {"ok": False, "erro": "Não foi possível conectar ao servidor DailyTasks."}
+            return {"ok": False, "erro": "Não foi possível conectar ao servidor."}
         except Exception as e:
             return {"ok": False, "erro": str(e)}
 
@@ -68,7 +92,11 @@ class DailyTasksAPI:
 
     def listar_projetos(self) -> list:
         try:
-            r = requests.get(f"{self.base_url}/projetos", headers=self.headers, timeout=10)
+            r = requests.get(
+                f"{self.base_url}/projetos",
+                headers=self.headers,
+                timeout=10,
+            )
             if r.status_code == 200:
                 data = r.json()
                 return data if isinstance(data, list) else []
@@ -82,7 +110,6 @@ class DailyTasksAPI:
             payload = {"nome": nome}
             if descricao:
                 payload["descricao"] = descricao
-
             r = requests.post(
                 f"{self.base_url}/projetos",
                 json=payload,
@@ -96,10 +123,9 @@ class DailyTasksAPI:
                 return {"ok": False, "erro": r.text or f"Erro {r.status_code}"}
         except Exception as e:
             return {"ok": False, "erro": str(e)}
-        
 
     def listar_listas_projeto(self, projeto_id: int) -> list:
-    #Busca as colunas (listas) de um projeto
+        """Busca as colunas (listas) de um projeto."""
         try:
             r = requests.get(
                 f"{self.base_url}/listas/projeto/{projeto_id}",
@@ -113,13 +139,17 @@ class DailyTasksAPI:
             return []
         except Exception as e:
             logger.error(f"Erro ao listar listas do projeto {projeto_id}: {e}")
-            return []    
+            return []
 
     # ── Funcionários ──────────────────────────────────────────────────────
 
     def listar_funcionarios(self) -> list:
         try:
-            r = requests.get(f"{self.base_url}/funcionarios", headers=self.headers, timeout=10)
+            r = requests.get(
+                f"{self.base_url}/funcionarios",
+                headers=self.headers,
+                timeout=10,
+            )
             if r.status_code == 200:
                 data = r.json()
                 return data if isinstance(data, list) else []
@@ -133,20 +163,19 @@ class DailyTasksAPI:
         funcionarios = self.listar_funcionarios()
         nome_lower   = nome.lower().strip()
 
-        # Busca exata primeiro
+        # 1. Busca exata
         for f in funcionarios:
             if f.get("nomeCompleto", "").lower() == nome_lower:
                 return f
 
-        # Busca parcial
+        # 2. Busca parcial — todas as palavras presentes
         for f in funcionarios:
             nome_completo = f.get("nomeCompleto", "").lower()
-            # Verifica se todas as palavras do nome estão no nome completo
             palavras = nome_lower.split()
             if all(p in nome_completo for p in palavras):
                 return f
 
-        # Busca pelo primeiro nome
+        # 3. Busca pelo primeiro nome
         for f in funcionarios:
             primeiro_nome = f.get("nomeCompleto", "").lower().split()[0]
             if nome_lower == primeiro_nome:
@@ -194,7 +223,6 @@ class DailyTasksAPI:
                 payload["listaId"] = lista_id
 
             logger.info(f"Criando tarefa — payload: {payload}")
-            logger.info(f"Headers: {self.headers}")
 
             r = requests.post(
                 f"{self.base_url}/tarefas",

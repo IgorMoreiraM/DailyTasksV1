@@ -64,9 +64,13 @@ export function PerfilPage() {
 
       
       localStorage.setItem(`dt_foto_${username}`, preview)
+
+      window.dispatchEvent(new Event('foto-atualizada'))
 setFoto(preview)
 setPreview(null)
 setSuccess(true)
+
+window.dispatchEvent(new Event('foto-atualizada'))
 
       setTimeout(() => setSuccess(false), 3000)
     } catch (err: any) {
@@ -86,8 +90,11 @@ setSuccess(true)
       const eu = usuarios.find((f: any) => f.username === username)
       if (eu) await funcionarioApi.uploadFoto(eu.id, '')
       localStorage.removeItem(`dt_foto_${username}`)
+      window.dispatchEvent(new Event('foto-atualizada'))
       setFoto(null)
       setPreview(null)
+
+      window.dispatchEvent(new Event('foto-atualizada'))
     } catch {
       setErro('Erro ao remover foto.')
     } finally {

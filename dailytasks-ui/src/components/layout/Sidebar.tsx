@@ -1,9 +1,10 @@
+import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import type { UserRole } from '../../types'
 import {
   LayoutDashboard, Building2, Users, FolderKanban,
-  CheckSquare, BarChart2, Settings, LogOut, User,
+  CheckSquare, BarChart2, LogOut, User, Bot,
 } from 'lucide-react'
 
 type NavItem = { label: string; icon: React.ReactNode; to: string; exact?: boolean }
@@ -29,6 +30,7 @@ function getNavItems(role: UserRole | null): NavItem[] {
         { label: 'Dashboard',      icon: <LayoutDashboard size={15}/>, to: '/gerente',     exact: true },
         { label: 'Meu Projeto',    icon: <FolderKanban size={15}/>,    to: '/gerente/projeto' },
         { label: 'Minhas Tarefas', icon: <CheckSquare size={15}/>,     to: '/gerente/tarefas' },
+        { label: 'Relatórios',     icon: <BarChart2 size={15}/>,       to: '/gerente/relatorios' },
       ]
     default:
       return [
@@ -54,9 +56,24 @@ const ROLE_DOT: Record<string, string> = {
 
 export function Sidebar() {
   const { username, role, logout } = useAuth()
-  const navigate = useNavigate()
-  const navItems = getNavItems(role)
-  const foto = localStorage.getItem(`dt_foto_${username}`)
+  const navigate  = useNavigate()
+  const navItems  = getNavItems(role)
+
+  const [foto, setFoto] = useState<string | null>(
+    localStorage.getItem(`dt_foto_${username}`) ?? null
+  )
+
+  useEffect(() => {
+    setFoto(localStorage.getItem(`dt_foto_${username}`) ?? null)
+  }, [username])
+
+  useEffect(() => {
+    function atualizarFoto() {
+      setFoto(localStorage.getItem(`dt_foto_${username}`) ?? null)
+    }
+    window.addEventListener('foto-atualizada', atualizarFoto)
+    return () => window.removeEventListener('foto-atualizada', atualizarFoto)
+  }, [username])
 
   return (
     <aside
@@ -111,51 +128,64 @@ export function Sidebar() {
           ))}
         </div>
 
+        {/* Seção Conta */}
         <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest px-2 pt-5 pb-1.5">
           Conta
         </p>
-        <button
-          onClick={() => navigate('/perfil')}
-          className="w-full flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-[13px] font-medium text-white/45 border-l-2 border-transparent hover:bg-white/[0.05] hover:text-white/80 transition-all"
-        >
-          <Settings size={15} className="opacity-80" />
-          Meu Perfil
-        </button>
+        <div className="flex flex-col gap-0.5">
+          <button
+            onClick={() => navigate('/perfil')}
+            className="w-full flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-[13px] font-medium text-white/45 border-l-2 border-transparent hover:bg-white/[0.05] hover:text-white/80 transition-all"
+          >
+            <User size={15} className="opacity-80 flex-shrink-0" />
+            Meu Perfil
+          </button>
+          <button
+            onClick={() => navigate('/configuracoes')}
+            className="w-full flex items-center gap-2.5 px-3 py-[9px] rounded-lg text-[13px] font-medium border-l-2 border-transparent hover:bg-white/[0.05] transition-all"
+            style={{ color: 'rgba(56,189,248,0.6)' }}
+          >
+            <Bot size={15} className="opacity-80 flex-shrink-0" />
+            Bot Telegram
+          </button>
+        </div>
       </nav>
 
-      {/* Perfil */}
+      {/* Perfil rodapé — div externa, dois botões separados dentro */}
       <div className="border-t flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-        <button
-          onClick={() => navigate('/perfil')}
-          className="w-full flex items-center gap-2.5 px-4 py-3.5 hover:bg-white/[0.05] transition-all"
-        >
-          {/* Avatar */}
-          <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center"
-            style={{ background: '#2a7a8a' }}>
-            {foto ? (
-              <img src={foto} alt="foto" className="w-full h-full object-cover" />
-            ) : (
-              <User size={14} className="text-white" />
-            )}
-          </div>
+        <div className="flex items-center gap-2.5 px-4 py-3.5">
 
-          <div className="flex-1 min-w-0 text-left">
-            <p className="text-[12.5px] font-semibold text-white/85 truncate">{username ?? '—'}</p>
-            <p className="text-[11px] text-white/30">{role}</p>
-          </div>
-
+          {/* Botão de perfil — avatar + nome */}
           <button
-            onClick={(e) => {
-              e.stopPropagation()
-              logout()
-              navigate('/login', { replace: true })
-            }}
+            onClick={() => navigate('/perfil')}
+            className="flex items-center gap-2.5 flex-1 min-w-0 hover:opacity-80 transition-opacity text-left"
+          >
+            <div
+              className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center"
+              style={{ background: '#2a7a8a' }}
+            >
+              {foto ? (
+                <img src={foto} alt="foto" className="w-full h-full object-cover" />
+              ) : (
+                <User size={14} className="text-white" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-semibold text-white/85 truncate">{username ?? '—'}</p>
+              <p className="text-[11px] text-white/30">{role}</p>
+            </div>
+          </button>
+
+          {/* Botão de logout — separado, nunca aninhado */}
+          <button
+            onClick={() => { logout(); navigate('/login', { replace: true }) }}
             title="Sair"
             className="text-white/25 hover:text-white/70 hover:bg-white/[0.07] p-1.5 rounded-lg transition-all flex-shrink-0"
           >
             <LogOut size={15} />
           </button>
-        </button>
+
+        </div>
       </div>
     </aside>
   )

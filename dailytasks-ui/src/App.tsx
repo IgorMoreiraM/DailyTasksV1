@@ -8,6 +8,7 @@ import { GerenteDashboard }      from './pages/gerente/GerenteDashboard'
 import { FuncionarioDashboard }  from './pages/funcionario/FuncionarioDashboard'
 import { ProjectDetailPage }     from './pages/projeto/ProjectDetailPage'
 import { PerfilPage } from './pages/shared/PerfilPage'
+import { ConfiguracoesPage } from './pages/shared/ConfiguracoesPage'
 
 interface ProtectedProps {
   allowed: boolean
@@ -78,6 +79,12 @@ export default function App() {
       <Route path="/perfil" element={
         <Protected allowed={auth && noTemp}>
           <PerfilPage />
+        </Protected>
+      } />
+
+      <Route path="/configuracoes" element={
+        <Protected allowed={auth && noTemp}>
+          <ConfiguracoesPage />
         </Protected>
       } />
 

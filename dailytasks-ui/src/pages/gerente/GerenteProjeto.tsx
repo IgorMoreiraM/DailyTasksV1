@@ -5,31 +5,31 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, CardHeader, CardTitle, EmptyState, Spinner, ProgressBar, Avatar } from '../../components/ui'
 import { projetoApi, tarefaApi } from '../../api'
 import type { Projeto, Tarefa } from '../../types'
-import { useAuth } from '../../contexts/AuthContext'
 
 export function GerenteProjeto() {
-  const { username } = useAuth()
   const navigate = useNavigate()
-  const [projetos,  setProjetos]  = useState<Projeto[]>([])
-  const [membros,   setMembros]   = useState<Record<number, any[]>>({})
-  const [tarefas,   setTarefas]   = useState<Record<number, Tarefa[]>>({})
-  const [loading,   setLoading]   = useState(true)
+  const [projetos, setProjetos] = useState<Projeto[]>([])
+  const [membros,  setMembros]  = useState<Record<number, any[]>>({})
+  const [tarefas,  setTarefas]  = useState<Record<number, Tarefa[]>>({})
+  const [loading,  setLoading]  = useState(true)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
       const rP = await projetoApi.listar()
-      const projs: Projeto[] = rP.data
+      const projs: Projeto[] = Array.isArray(rP.data) ? rP.data : []
       setProjetos(projs)
+
       const [mRes, tRes] = await Promise.all([
         Promise.allSettled(projs.map(p => projetoApi.listarMembros(p.id))),
         Promise.allSettled(projs.map(p => tarefaApi.listarPorProjeto(p.id))),
       ])
+
       const mMap: Record<number, any[]>    = {}
       const tMap: Record<number, Tarefa[]> = {}
       projs.forEach((p, i) => {
-        if (mRes[i].status === 'fulfilled') mMap[p.id] = (mRes[i] as any).value.data
-        if (tRes[i].status === 'fulfilled') tMap[p.id] = (tRes[i] as any).value.data
+        mMap[p.id] = mRes[i].status === 'fulfilled' ? (mRes[i] as any).value.data ?? [] : []
+        tMap[p.id] = tRes[i].status === 'fulfilled' ? (tRes[i] as any).value.data ?? [] : []
       })
       setMembros(mMap)
       setTarefas(tMap)
@@ -39,11 +39,7 @@ export function GerenteProjeto() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  const projetosLider = projetos.filter(p => {
-    const lista = membros[p.id] ?? []
-    return lista.some(m => m.funcionario?.username === username && m.papel === 'LIDER_PROJETO')
-  })
-
+  // Exibe todos os projetos retornados — backend já filtra pelo gerente logado
   if (loading) return (
     <DashboardLayout title="Meu Projeto" breadcrumb="Gerente · Projeto">
       <div className="flex justify-center py-20"><Spinner size={32} /></div>
@@ -52,15 +48,16 @@ export function GerenteProjeto() {
 
   return (
     <DashboardLayout title="Meu Projeto" breadcrumb="Gerente · Projeto">
-      {projetosLider.length === 0 ? (
-        <EmptyState icon={<FolderKanban size={40} />} message="Nenhum projeto liderado"
-          sub="Aguarde o Gestor te atribuir como líder de um projeto." />
+      {projetos.length === 0 ? (
+        <EmptyState icon={<FolderKanban size={40} />} message="Nenhum projeto vinculado"
+          sub="Aguarde o Gestor te vincular a um projeto ou atribuir uma tarefa." />
       ) : (
         <div className="flex flex-col gap-5">
-          {projetosLider.map(p => {
-            const ts    = tarefas[p.id] ?? []
-            const pct   = ts.length ? Math.round(ts.filter(t => t.status === 'CONCLUIDA').length / ts.length * 100) : 0
+          {projetos.map(p => {
+            const ts     = tarefas[p.id] ?? []
+            const pct    = ts.length ? Math.round(ts.filter(t => t.status === 'CONCLUIDA').length / ts.length * 100) : 0
             const equipe = (membros[p.id] ?? []).map((m: any) => m.funcionario).filter(Boolean)
+
             return (
               <Card key={p.id}>
                 <CardHeader>
@@ -86,8 +83,8 @@ export function GerenteProjeto() {
                 <div className="px-5 py-4 space-y-3">
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { label: 'Total', value: ts.length },
-                      { label: 'Concluídas', value: ts.filter(t => t.status === 'CONCLUIDA').length },
+                      { label: 'Total',        value: ts.length },
+                      { label: 'Concluídas',   value: ts.filter(t => t.status === 'CONCLUIDA').length },
                       { label: 'Em andamento', value: ts.filter(t => t.status === 'EM_ANDAMENTO').length },
                     ].map(m => (
                       <div key={m.label} className="rounded-xl p-3 text-center" style={{ background: 'var(--bg-subtle)' }}>

@@ -6,20 +6,20 @@ import { StatCard, Card, CardHeader, CardTitle, Btn, Modal, FormField,
          StatusBadge, Avatar, EmptyState, Spinner, ProgressBar,
          inputClass, inputStyle } from '../../components/ui'
 import { projetoApi, tarefaApi, funcionarioApi } from '../../api'
-import type { Projeto, Tarefa, Funcionario, ProjetoPapel } from '../../types'
-import { useAuth } from '../../contexts/AuthContext'
-import { GerenteProjeto }  from './GerenteProjeto'
-import { GerenteTarefas }  from './GerenteTarefas'
+import type { Projeto, Tarefa, Funcionario } from '../../types'
+import { GerenteProjeto } from './GerenteProjeto'
+import { GerenteTarefas } from './GerenteTarefas'
+import { GerenteRelatorios } from './GerenteRelatorios'
 
 function GerenteHome() {
-  const { username } = useAuth()
   const navigate = useNavigate()
 
-  const [projetos,     setProjetos]     = useState<Projeto[]>([])
-  const [membros,      setMembros]      = useState<Record<number, any[]>>({})
-  const [tarefas,      setTarefas]      = useState<Record<number, Tarefa[]>>({})
-  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([])
-  const [loading,      setLoading]      = useState(true)
+  const [projetos,                setProjetos]                = useState<Projeto[]>([])
+  const [tarefasPorProjeto,       setTarefasPorProjeto]       = useState<Record<number, Tarefa[]>>({})
+  const [membrosPorProjeto,       setMembrosPorProjeto]       = useState<Record<number, any[]>>({})
+  const [funcionarios,            setFuncionarios]            = useState<Funcionario[]>([])
+  const [minhasTarefasAtribuidas, setMinhasTarefasAtribuidas] = useState<Tarefa[]>([])
+  const [loading,                 setLoading]                 = useState(true)
 
   const [modalTarefa, setModalTarefa] = useState(false)
   const [tarefaProj,  setTarefaProj]  = useState<number | null>(null)
@@ -30,24 +30,30 @@ function GerenteHome() {
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [rP, rF] = await Promise.all([projetoApi.listar(), funcionarioApi.listar()])
-      const projs: Projeto[] = rP.data
+      const [rP, rT] = await Promise.all([
+        projetoApi.listar(),
+        tarefaApi.listarMinhas(),
+      ])
+
+      const projs: Projeto[]     = Array.isArray(rP.data) ? rP.data : []
+      const minhas: Tarefa[]     = Array.isArray(rT.data) ? rT.data : []
+
       setProjetos(projs)
-      setFuncionarios(rF.data)
+      setMinhasTarefasAtribuidas(minhas)
 
       const [membrosResults, tarefasResults] = await Promise.all([
         Promise.allSettled(projs.map(p => projetoApi.listarMembros(p.id))),
         Promise.allSettled(projs.map(p => tarefaApi.listarPorProjeto(p.id))),
       ])
 
-      const mMap: Record<number, any[]>     = {}
-      const tMap: Record<number, Tarefa[]>  = {}
+      const mMap: Record<number, any[]>    = {}
+      const tMap: Record<number, Tarefa[]> = {}
       projs.forEach((p, i) => {
-        if (membrosResults[i].status === 'fulfilled') mMap[p.id] = (membrosResults[i] as any).value.data
-        if (tarefasResults[i].status === 'fulfilled') tMap[p.id] = (tarefasResults[i] as any).value.data
+        mMap[p.id] = membrosResults[i].status === 'fulfilled' ? (membrosResults[i] as any).value.data ?? [] : []
+        tMap[p.id] = tarefasResults[i].status === 'fulfilled' ? (tarefasResults[i] as any).value.data ?? [] : []
       })
-      setMembros(mMap)
-      setTarefas(tMap)
+      setMembrosPorProjeto(mMap)
+      setTarefasPorProjeto(tMap)
     } catch (err) {
       console.error('Erro GerenteDashboard:', err)
     } finally {
@@ -57,25 +63,24 @@ function GerenteHome() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  function meuPapel(projetoId: number): ProjetoPapel | null {
-    const lista   = membros[projetoId] ?? []
-    const vinculo = lista.find(m => m.funcionario?.username === username)
-    return vinculo?.papel ?? null
-  }
-
-  const projetosLider       = projetos.filter(p => meuPapel(p.id) === 'LIDER_PROJETO')
-  const projetosColaborador = projetos.filter(p => meuPapel(p.id) === 'COLABORADOR')
-
-  const minhasTarefas = projetosColaborador.flatMap(p =>
-    (tarefas[p.id] ?? []).filter(t =>
-      t.nomeFuncionario?.toLowerCase().includes((username ?? '').toLowerCase())
-    )
-  )
-
-  function abrirModalTarefa(projetoId: number) {
+  // Abre modal e busca funcionários — com fallback para membros do projeto
+  async function abrirModalTarefa(projetoId: number) {
     setTarefaProj(projetoId)
     setModalTarefa(true)
+    try {
+      const rF = await funcionarioApi.listar()
+      setFuncionarios(Array.isArray(rF.data) ? rF.data : [])
+    } catch {
+      // Gerente não tem acesso a /funcionarios — usa membros do projeto como fallback
+      const membros = membrosPorProjeto[projetoId] ?? []
+      const funcs   = membros.map((m: any) => m.funcionario).filter(Boolean)
+      setFuncionarios(funcs)
+    }
   }
+
+  const totalTarefas    = projetos.reduce((acc, p) => acc + (tarefasPorProjeto[p.id]?.length ?? 0), 0)
+  const totalConcluidas = projetos.reduce((acc, p) =>
+    acc + (tarefasPorProjeto[p.id]?.filter(t => t.status === 'CONCLUIDA').length ?? 0), 0)
 
   async function handleCriarTarefa(e: FormEvent) {
     e.preventDefault()
@@ -92,7 +97,7 @@ function GerenteHome() {
       })
       setModalTarefa(false)
       setFTarefa({ titulo: '', descricao: '', dataDeVencimento: '', funcionarioId: '' })
-      fetchAll()
+      await fetchAll()
     } catch (err: any) {
       setErroT(err?.response?.data ?? 'Erro ao criar tarefa.')
     } finally { setSavingT(false) }
@@ -101,18 +106,17 @@ function GerenteHome() {
   async function alterarStatus(tarefaId: number, status: string) {
     try {
       await tarefaApi.atualizar(tarefaId, { status: status as any })
-      fetchAll()
-    } catch { alert('Não foi possível atualizar o status.') }
+      await fetchAll()
+    } catch (err: any) {
+      console.error('Erro ao atualizar status:', err?.response?.status, err?.response?.data)
+      alert('Não foi possível atualizar o status.')
+    }
   }
-
-  const totalTarefasLider = projetosLider.reduce((acc, p) => acc + (tarefas[p.id]?.length ?? 0), 0)
-  const concluidasLider   = projetosLider.reduce((acc, p) =>
-    acc + (tarefas[p.id]?.filter(t => t.status === 'CONCLUIDA').length ?? 0), 0)
 
   const actions = (
     <Btn size="sm" icon={<Plus size={13} />}
-      onClick={() => projetosLider.length > 0 && abrirModalTarefa(projetosLider[0].id)}
-      disabled={projetosLider.length === 0}>
+      onClick={() => projetos.length > 0 && abrirModalTarefa(projetos[0].id)}
+      disabled={projetos.length === 0}>
       Nova Tarefa
     </Btn>
   )
@@ -128,31 +132,31 @@ function GerenteHome() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Projetos liderados" value={projetosLider.length}
+        <StatCard label="Meus projetos" value={projetos.length}
           icon={<Star size={16} className="text-brand-teal" />}
           accentColor="bg-brand-teal" iconBg="bg-brand-teal-subtle" delay="0.05s" />
-        <StatCard label="Tarefas nos projetos" value={totalTarefasLider}
+        <StatCard label="Total de tarefas" value={totalTarefas}
           icon={<CheckSquare size={16} className="text-violet-600" />}
           accentColor="bg-violet-500" iconBg="bg-violet-50" delay="0.10s" />
-        <StatCard label="Concluídas" value={concluidasLider}
-          sub={totalTarefasLider > 0 ? `<strong>${Math.round(concluidasLider / totalTarefasLider * 100)}%</strong>` : '—'}
+        <StatCard label="Concluídas" value={totalConcluidas}
+          sub={totalTarefas > 0 ? `<strong>${Math.round(totalConcluidas / totalTarefas * 100)}%</strong>` : '—'}
           icon={<CheckSquare size={16} className="text-emerald-600" />}
           accentColor="bg-emerald-500" iconBg="bg-emerald-50" delay="0.15s" />
-        <StatCard label="Minhas tarefas" value={minhasTarefas.length}
-          sub="Em outros projetos"
+        <StatCard label="Minhas tarefas" value={minhasTarefasAtribuidas.length}
+          sub="Atribuídas a mim"
           icon={<User size={16} className="text-brand-orange" />}
           accentColor="bg-brand-orange" iconBg="bg-brand-orange-subtle" delay="0.20s" />
       </div>
 
-      {/* ── SEÇÃO: COMO GERENTE ── */}
-      {projetosLider.length > 0 && (
+      {/* Projetos */}
+      {projetos.length > 0 ? (
         <>
-          <SectionDivider label="Gerente de Projeto" color="violet" />
+          <SectionDivider label="Meus Projetos" color="violet" />
 
-          {projetosLider.map(p => {
-            const ts    = tarefas[p.id] ?? []
-            const pct   = ts.length ? Math.round(ts.filter(t => t.status === 'CONCLUIDA').length / ts.length * 100) : 0
-            const equipe = (membros[p.id] ?? []).map((m: any) => m.funcionario).filter(Boolean)
+          {projetos.map(p => {
+            const ts     = tarefasPorProjeto[p.id] ?? []
+            const pct    = ts.length ? Math.round(ts.filter(t => t.status === 'CONCLUIDA').length / ts.length * 100) : 0
+            const equipe = (membrosPorProjeto[p.id] ?? []).map((m: any) => m.funcionario).filter(Boolean)
 
             return (
               <Card key={p.id} delay="0.25s" className="mb-5">
@@ -179,7 +183,7 @@ function GerenteHome() {
                   </div>
                 </CardHeader>
 
-                {/* Tarefas do projeto */}
+                {/* Tarefas */}
                 <div className="divide-y" style={{ borderColor: 'var(--border-default)' }}>
                   {ts.length === 0 ? (
                     <div className="p-5">
@@ -233,49 +237,47 @@ function GerenteHome() {
             )
           })}
         </>
+      ) : (
+        <EmptyState icon={<FolderKanban size={40} />} message="Nenhum projeto vinculado"
+          sub="Aguarde o Gestor te vincular a um projeto ou atribuir uma tarefa." />
       )}
 
-      {/* ── SEÇÃO: COMO FUNCIONÁRIO ── */}
-      {projetosColaborador.length > 0 && (
+      {/* Minhas tarefas atribuídas */}
+      {minhasTarefasAtribuidas.length > 0 && (
         <>
-          <SectionDivider label="Funcionário em outros projetos" color="orange" />
-
+          <SectionDivider label="Minhas Tarefas Atribuídas" color="orange" />
           <Card delay="0.45s">
             <CardHeader>
               <div>
-                <CardTitle>Minhas tarefas atribuídas</CardTitle>
+                <CardTitle>Tarefas atribuídas a mim</CardTitle>
                 <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  {minhasTarefas.length} tarefa{minhasTarefas.length !== 1 ? 's' : ''} em {projetosColaborador.length} projeto{projetosColaborador.length !== 1 ? 's' : ''}
+                  {minhasTarefasAtribuidas.length} tarefa{minhasTarefasAtribuidas.length !== 1 ? 's' : ''}
                 </p>
               </div>
             </CardHeader>
-
-            {minhasTarefas.length === 0 ? (
-              <div className="p-6">
-                <EmptyState icon={<CheckSquare size={32} />} message="Nenhuma tarefa atribuída"
-                  sub="Você não possui tarefas nesses projetos ainda." />
-              </div>
-            ) : (
-              <div className="divide-y" style={{ borderColor: 'var(--border-default)' }}>
-                {minhasTarefas.map(t => (
-                  <div key={t.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/50 transition-colors">
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-brand-orange">
-                        {t.nomeProjeto}
-                      </span>
-                      <p className="text-[13px] font-medium" style={{ color: 'var(--text-primary)' }}>
-                        {t.titulo}
+            <div className="divide-y" style={{ borderColor: 'var(--border-default)' }}>
+              {minhasTarefasAtribuidas.map(t => (
+                <div key={t.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/50 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-brand-orange">
+                      {t.nomeProjeto}
+                    </span>
+                    <p className={`text-[13px] font-medium ${t.status === 'CONCLUIDA' ? 'line-through opacity-50' : ''}`}
+                      style={{ color: 'var(--text-primary)' }}>
+                      {t.titulo}
+                    </p>
+                    {t.dataDeVencimento && (
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                        Prazo: {t.dataDeVencimento}
                       </p>
-                      {t.dataDeVencimento && (
-                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                          Prazo: {t.dataDeVencimento}
-                        </p>
-                      )}
-                    </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <StatusBadge status={t.status} />
                     <select
                       value={t.status}
                       onChange={e => alterarStatus(t.id, e.target.value)}
-                      className="text-[11px] font-semibold h-8 px-2.5 rounded-lg border outline-none cursor-pointer"
+                      className="text-[11px] font-semibold h-7 px-2 rounded-lg border outline-none cursor-pointer"
                       style={{ background: 'var(--bg-subtle)', borderColor: 'var(--border-default)', color: 'var(--text-secondary)' }}
                     >
                       <option value="PENDENTE">Pendente</option>
@@ -285,20 +287,14 @@ function GerenteHome() {
                       <option value="CANCELADA">Cancelada</option>
                     </select>
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              ))}
+            </div>
           </Card>
         </>
       )}
 
-      {/* Estado vazio geral */}
-      {projetos.length === 0 && (
-        <EmptyState icon={<FolderKanban size={40} />} message="Nenhum projeto vinculado"
-          sub="Aguarde o Gestor te vincular a um projeto." />
-      )}
-
-      {/* Modal: Nova Tarefa */}
+      {/* Modal Nova Tarefa */}
       <Modal open={modalTarefa} onClose={() => { setModalTarefa(false); setErroT('') }} title="Nova Tarefa">
         {erroT && (
           <div className="flex items-center gap-2.5 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 mb-4">
@@ -307,6 +303,15 @@ function GerenteHome() {
           </div>
         )}
         <form onSubmit={handleCriarTarefa} className="space-y-4">
+          {projetos.length > 1 && (
+            <FormField label="Projeto">
+              <select className={inputClass} style={{ ...inputStyle, cursor: 'pointer' }}
+                value={tarefaProj ?? ''}
+                onChange={e => setTarefaProj(Number(e.target.value))}>
+                {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+            </FormField>
+          )}
           <FormField label="Título">
             <input className={inputClass} style={inputStyle} required
               placeholder="Ex: Implementar autenticação"
@@ -348,7 +353,6 @@ function SectionDivider({ label, color }: { label: string; color: 'violet' | 'or
     violet: 'bg-violet-50 border-violet-200 text-violet-700',
     orange: 'bg-brand-orange-subtle border-orange-200 text-orange-700',
   }[color]
-
   return (
     <div className="flex items-center gap-3 mb-4 mt-2">
       <div className="flex-1 h-px" style={{ background: 'var(--border-default)' }} />
@@ -363,10 +367,11 @@ function SectionDivider({ label, color }: { label: string; color: 'violet' | 'or
 export function GerenteDashboard() {
   return (
     <Routes>
-      <Route index             element={<GerenteHome />} />
-      <Route path="projeto"    element={<GerenteProjeto />} />
-      <Route path="tarefas"    element={<GerenteTarefas />} />
-      <Route path="*"          element={<GerenteHome />} />
+      <Route index          element={<GerenteHome />} />
+      <Route path="projeto" element={<GerenteProjeto />} />
+      <Route path="tarefas" element={<GerenteTarefas />} />
+      <Route path="relatorios" element={<GerenteRelatorios />} />
+      <Route path="*"       element={<GerenteHome />} />
     </Routes>
   )
 }

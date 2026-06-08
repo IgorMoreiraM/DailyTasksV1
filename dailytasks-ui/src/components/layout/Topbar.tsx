@@ -8,19 +8,24 @@ interface TopbarProps {
 }
 
 export function Topbar({ breadcrumb, title, actions }: TopbarProps) {
-  const [dark, setDark] = useState(false)
+  // Inicializa lendo o estado real do DOM — já aplicado pelo script do index.html
+  const [dark, setDark] = useState(
+    () => document.documentElement.classList.contains('dark')
+  )
 
   function toggleDark() {
-    document.documentElement.classList.toggle('dark')
-    setDark(d => !d)
+    const isDark = document.documentElement.classList.toggle('dark')
+    setDark(isDark)
+    // Persiste no localStorage com a chave que o script do index.html lê
+    localStorage.setItem('dt_tema', isDark ? 'dark' : 'light')
   }
 
   return (
     <header
       className="flex items-center justify-between px-7 flex-shrink-0 border-b"
       style={{
-        height: 'var(--topbar-height)',
-        background: 'var(--bg-surface)',
+        height:      'var(--topbar-height)',
+        background:  'var(--bg-surface)',
         borderColor: 'var(--border-default)',
       }}
     >
@@ -61,6 +66,7 @@ export function Topbar({ breadcrumb, title, actions }: TopbarProps) {
 
         <button
           onClick={toggleDark}
+          title={dark ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
           className="flex items-center justify-center w-9 h-9 rounded-xl border transition-all hover:border-brand-teal/40"
           style={{ background: 'var(--bg-subtle)', borderColor: 'var(--border-default)', color: 'var(--text-secondary)' }}
         >

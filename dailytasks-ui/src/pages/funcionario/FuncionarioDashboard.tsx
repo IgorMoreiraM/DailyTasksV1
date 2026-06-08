@@ -27,41 +27,30 @@ function formatarData(data: string): string {
   return `${dia}/${mes}/${ano}`
 }
 
-function FuncionarioHome() {
-  const { username } = useAuth()
-  const navigate = useNavigate()
-
-  const [projetos,     setProjetos]  = useState<Projeto[]>([])
-  const [tarefas,      setTarefas]   = useState<Tarefa[]>([])
-  const [loading,      setLoading]   = useState(true)
-  const [filterStatus, setFilter]    = useState<TaskStatus | 'TODAS'>('TODAS')
-  const [updating,     setUpdating]  = useState<number | null>(null)
+/* ─────────────────────────────────────────
+   Hook compartilhado de dados
+───────────────────────────────────────── */
+function useFuncionarioData() {
+  const [projetos,  setProjetos]  = useState<Projeto[]>([])
+  const [tarefas,   setTarefas]   = useState<Tarefa[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [updating,  setUpdating]  = useState<number | null>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      const rP = await projetoApi.listar()
-      const projs: Projeto[] = rP.data
-      setProjetos(projs)
-
-      const results = await Promise.allSettled(projs.map(p => tarefaApi.listarPorProjeto(p.id)))
-      const minhas: Tarefa[] = []
-      results.forEach(r => {
-        if (r.status === 'fulfilled') {
-          r.value.data.forEach((t: Tarefa) => {
-            if (t.nomeFuncionario?.toLowerCase().includes((username ?? '').toLowerCase())) {
-              minhas.push(t)
-            }
-          })
-        }
-      })
-      setTarefas(minhas)
+      const [rP, rT] = await Promise.all([
+        projetoApi.listar(),
+        tarefaApi.listarMinhas(),
+      ])
+      setProjetos(Array.isArray(rP.data) ? rP.data : [])
+      setTarefas(Array.isArray(rT.data) ? rT.data : [])
     } catch (err) {
       console.error('Erro FuncionarioDashboard:', err)
     } finally {
       setLoading(false)
     }
-  }, [username])
+  }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
@@ -77,9 +66,16 @@ function FuncionarioHome() {
     }
   }
 
-  const tarefasFiltradas = filterStatus === 'TODAS'
-    ? tarefas
-    : tarefas.filter(t => t.status === filterStatus)
+  return { projetos, tarefas, loading, updating, handleStatusChange }
+}
+
+/* ─────────────────────────────────────────
+   Dashboard — visão geral com stats e projetos
+───────────────────────────────────────── */
+function FuncionarioHome() {
+  const { username } = useAuth()
+  const navigate = useNavigate()
+  const { projetos, tarefas, loading } = useFuncionarioData()
 
   const pendentes  = tarefas.filter(t => t.status === 'PENDENTE').length
   const andamento  = tarefas.filter(t => t.status === 'EM_ANDAMENTO').length
@@ -92,13 +88,13 @@ function FuncionarioHome() {
   }).length
 
   if (loading) return (
-    <DashboardLayout title="Minhas Tarefas" breadcrumb="Funcionário · Dashboard">
+    <DashboardLayout title="Dashboard" breadcrumb="Funcionário · Dashboard">
       <div className="flex justify-center py-20"><Spinner size={32} /></div>
     </DashboardLayout>
   )
 
   return (
-    <DashboardLayout title="Minhas Tarefas" breadcrumb={`Funcionário · ${username}`}>
+    <DashboardLayout title="Dashboard" breadcrumb={`Funcionário · ${username}`}>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -117,11 +113,14 @@ function FuncionarioHome() {
           accentColor="bg-rose-500" iconBg="bg-rose-50" delay="0.20s" />
       </div>
 
-      {/* Projetos que participa */}
+      {/* Projetos */}
       {projetos.length > 0 && (
         <Card delay="0.25s" className="mb-5">
           <CardHeader>
             <CardTitle>Projetos em que participo</CardTitle>
+            <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              {projetos.length} projeto{projetos.length !== 1 ? 's' : ''}
+            </p>
           </CardHeader>
           <div className="flex flex-wrap gap-2 p-4">
             {projetos.map(p => (
@@ -140,8 +139,101 @@ function FuncionarioHome() {
         </Card>
       )}
 
-      {/* Lista de tarefas */}
+      {/* Tarefas recentes — máx 5, link para ver todas */}
       <Card delay="0.35s">
+        <CardHeader>
+          <div>
+            <CardTitle>Tarefas recentes</CardTitle>
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              {tarefas.length} tarefa{tarefas.length !== 1 ? 's' : ''} atribuídas
+            </p>
+          </div>
+          {tarefas.length > 5 && (
+            <button onClick={() => navigate('/funcionario/tarefas')}
+              className="text-[12px] font-semibold text-brand-teal hover:underline">
+              Ver todas →
+            </button>
+          )}
+        </CardHeader>
+
+        {tarefas.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={<CheckSquare size={36} />}
+              message="Nenhuma tarefa atribuída"
+              sub="Aguarde tarefas serem atribuídas pelo gerente."
+            />
+          </div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: 'var(--border-default)' }}>
+            {tarefas.slice(0, 5).map(t => {
+              const isAtrasada = t.dataDeVencimento
+                && new Date(t.dataDeVencimento) < new Date()
+                && t.status !== 'CONCLUIDA'
+                && t.status !== 'CANCELADA'
+
+              return (
+                <div key={t.id} className="flex items-start gap-4 px-5 py-4 hover:bg-slate-50/50 transition-colors">
+                  <div className={`w-1 self-stretch rounded-full flex-shrink-0 mt-1 ${
+                    t.status === 'CONCLUIDA'    ? 'bg-emerald-400' :
+                    t.status === 'EM_ANDAMENTO' ? 'bg-blue-400'    :
+                    t.status === 'BLOQUEADA'    ? 'bg-rose-400'    :
+                    t.status === 'CANCELADA'    ? 'bg-slate-300'   : 'bg-amber-400'
+                  }`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-brand-teal mb-0.5">
+                      {t.nomeProjeto}
+                    </p>
+                    <p className={`text-[13.5px] font-semibold ${t.status === 'CONCLUIDA' ? 'line-through opacity-50' : ''}`}
+                      style={{ color: 'var(--text-primary)' }}>
+                      {t.titulo}
+                    </p>
+                    {t.dataDeVencimento && (
+                      <p className={`text-[11px] mt-1 flex items-center gap-1 ${isAtrasada ? 'text-rose-500 font-semibold' : ''}`}
+                        style={!isAtrasada ? { color: 'var(--text-muted)' } : undefined}>
+                        {isAtrasada && <AlertTriangle size={11} />}
+                        {isAtrasada ? 'Atrasada · ' : 'Prazo: '}{formatarData(t.dataDeVencimento ?? '')}
+                      </p>
+                    )}
+                  </div>
+                  <StatusBadge status={t.status} />
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </Card>
+
+      {pendentes > 0 && (
+        <p className="text-[12px] mt-4 text-center" style={{ color: 'var(--text-muted)' }}>
+          Você tem <strong className="text-amber-600">{pendentes}</strong> tarefa{pendentes !== 1 ? 's' : ''} pendente{pendentes !== 1 ? 's' : ''}.
+        </p>
+      )}
+
+    </DashboardLayout>
+  )
+}
+
+/* ─────────────────────────────────────────
+   Minhas Tarefas — lista completa com filtros
+───────────────────────────────────────── */
+function FuncionarioTarefas() {
+  const { tarefas, loading, updating, handleStatusChange } = useFuncionarioData()
+  const [filterStatus, setFilter] = useState<TaskStatus | 'TODAS'>('TODAS')
+
+  const tarefasFiltradas = filterStatus === 'TODAS'
+    ? tarefas
+    : tarefas.filter(t => t.status === filterStatus)
+
+  if (loading) return (
+    <DashboardLayout title="Minhas Tarefas" breadcrumb="Funcionário · Tarefas">
+      <div className="flex justify-center py-20"><Spinner size={32} /></div>
+    </DashboardLayout>
+  )
+
+  return (
+    <DashboardLayout title="Minhas Tarefas" breadcrumb="Funcionário · Tarefas">
+      <Card>
         <CardHeader>
           <div>
             <CardTitle>Fila de trabalho</CardTitle>
@@ -150,17 +242,13 @@ function FuncionarioHome() {
               {filterStatus !== 'TODAS' ? ` · ${STATUS_LABEL[filterStatus]}` : ''}
             </p>
           </div>
-
-          {/* Filtros de status */}
           <div className="flex gap-1.5 flex-wrap">
             {(['TODAS', ...STATUS_OPTIONS] as const).map(s => (
               <button key={s} onClick={() => setFilter(s)}
-                className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-all ${
-                  filterStatus === s
-                    ? 'bg-brand-teal text-white border-brand-teal'
-                    : 'border-transparent hover:border-brand-teal/30'
-                }`}
-                style={filterStatus !== s ? { background: 'var(--bg-subtle)', color: 'var(--text-secondary)' } : undefined}>
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-all"
+                style={filterStatus === s
+                  ? { background: '#2a7a8a', color: 'white', borderColor: '#2a7a8a' }
+                  : { background: 'var(--bg-subtle)', color: 'var(--text-secondary)', borderColor: 'var(--border-default)' }}>
                 {s === 'TODAS' ? 'Todas' : STATUS_LABEL[s]}
                 {s !== 'TODAS' && (
                   <span className="ml-1 opacity-60">{tarefas.filter(t => t.status === s).length}</span>
@@ -188,8 +276,6 @@ function FuncionarioHome() {
 
               return (
                 <div key={t.id} className="flex items-start gap-4 px-5 py-4 hover:bg-slate-50/50 transition-colors">
-
-                  {/* Barra lateral de status */}
                   <div className={`w-1 self-stretch rounded-full flex-shrink-0 mt-1 ${
                     t.status === 'CONCLUIDA'    ? 'bg-emerald-400' :
                     t.status === 'EM_ANDAMENTO' ? 'bg-blue-400'    :
@@ -197,7 +283,6 @@ function FuncionarioHome() {
                     t.status === 'CANCELADA'    ? 'bg-slate-300'   : 'bg-amber-400'
                   }`} />
 
-                  {/* Conteúdo */}
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] font-bold uppercase tracking-wide text-brand-teal mb-0.5">
                       {t.nomeProjeto}
@@ -220,7 +305,6 @@ function FuncionarioHome() {
                     )}
                   </div>
 
-                  {/* Controles de status */}
                   <div className="flex flex-col items-end gap-2 flex-shrink-0">
                     <StatusBadge status={t.status} />
                     {updating === t.id ? (
@@ -246,23 +330,19 @@ function FuncionarioHome() {
           </div>
         )}
       </Card>
-
-      {/* Aviso de pendentes */}
-      {pendentes > 0 && (
-        <p className="text-[12px] mt-4 text-center" style={{ color: 'var(--text-muted)' }}>
-          Você tem <strong className="text-amber-600">{pendentes}</strong> tarefa{pendentes !== 1 ? 's' : ''} pendente{pendentes !== 1 ? 's' : ''}.
-        </p>
-      )}
-
     </DashboardLayout>
   )
 }
 
+/* ─────────────────────────────────────────
+   Router
+───────────────────────────────────────── */
 export function FuncionarioDashboard() {
   return (
     <Routes>
-      <Route index element={<FuncionarioHome />} />
-      <Route path="*" element={<FuncionarioHome />} />
+      <Route index          element={<FuncionarioHome />} />
+      <Route path="tarefas" element={<FuncionarioTarefas />} />
+      <Route path="*"       element={<FuncionarioHome />} />
     </Routes>
   )
 }
